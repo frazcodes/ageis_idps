@@ -1,0 +1,21 @@
+# Normalise line endings in the repository.
+#
+# .editorconfig declares LF for source files; this keeps Git from rewriting them
+# to CRLF on Windows checkouts. Windows-native scripts stay CRLF.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets must never be text-normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.pcap binary
+*.pcapng binary

@@ -1,0 +1,26 @@
+# Minimal development dependencies for Aegis IDPS.
+#
+# Only PostgreSQL is provided: it is the one external service the backend needs.
+# Application services are run from source during development (see docs/development.md)
+# so that the debugger and hot-reload stay available.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegis-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AEGIS_DB_NAME:-aegis}
+      POSTGRES_USER: ${AEGIS_DB_USER:-aegis}
+      POSTGRES_PASSWORD: ${AEGIS_DB_PASSWORD:-change-me-dev-only}
+    ports:
+      - "${AEGIS_DB_PORT:-5432}:5432"
+    volumes:
+      - aegis-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AEGIS_DB_USER:-aegis} -d ${AEGIS_DB_NAME:-aegis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  aegis-postgres-data:

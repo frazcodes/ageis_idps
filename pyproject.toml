@@ -1,0 +1,143 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aegis-idps"
+version = "0.1.0"
+description = "Aegis IDPS - AI-Powered Hybrid Host and Network Intrusion Detection and Prevention System"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "Aegis IDPS Team" }]
+keywords = ["idps", "security", "ids", "anomaly-detection", "soc"]
+
+# Deliberately minimal. These are the only packages shared by EVERY component.
+dependencies = [
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+]
+
+[project.optional-dependencies]
+# Central FastAPI backend + PostgreSQL persistence layer.
+backend = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.2",
+]
+# Windows/Linux endpoint agent.
+agent = [
+    "psutil>=6.0",
+]
+# Network detection sensor (packet capture + flow features).
+sensor = [
+    "scapy>=2.6",
+]
+# Anomaly detection / risk scoring.
+ml = [
+    "numpy>=2.0",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
+]
+# Controlled IPS actions (policy gated).
+response = [
+    "psutil>=6.0",
+]
+# Native desktop administrator GUI (Qt for Python).
+desktop = [
+    "PySide6>=6.10",
+]
+# Developer tooling for the whole monorepo.
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.urls]
+Documentation = "https://github.com/example/aegis-idps/tree/main/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "shared/aegis_shared",
+    "backend/aegis_backend",
+    "agent/aegis_agent",
+    "network-sensor/aegis_network_sensor",
+    "ml-engine/aegis_ml_engine",
+    "response-engine/aegis_response_engine",
+    "desktop/aegis_desktop",
+    "runtime/aegis_runtime",
+]
+
+# ---------------------------------------------------------------------------
+# Tooling configuration (applies to the whole monorepo)
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TID", "RUF"]
+# S-rules (bandit-style security linting) are intentionally enabled: this is a
+# security product and we want flagged patterns such as shell=True surfaced.
+extend-select = ["S"]
+ignore = [
+    # Security-sensitive modules legitimately need subprocess/network access,
+    # and every such call must be reviewed rather than blanket-ignored.
+    "S101",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "PLR2004"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "aegis_shared",
+    "aegis_backend",
+    "aegis_agent",
+    "aegis_network_sensor",
+    "aegis_ml_engine",
+    "aegis_response_engine",
+    "aegis_desktop",
+    "aegis_runtime",
+]
+
+[tool.mypy]
+files = [
+    "shared",
+    "backend",
+    "agent",
+    "network-sensor",
+    "ml-engine",
+    "response-engine",
+    "desktop",
+    "runtime",
+    "tests",
+]
+python_version = "3.11"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = ["build", "dist"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"
+asyncio_mode = "auto"
+markers = [
+    "integration: tests that require external services (e.g. PostgreSQL)",
+]
