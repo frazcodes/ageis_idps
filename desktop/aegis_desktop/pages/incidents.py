@@ -836,7 +836,9 @@ class IncidentsPage(BasePage):
 
         for finding in findings:
             if finding.finding_id in finding_ids:
-                if "NETWORK" in finding.rule_id or finding.category == "network":
+                rule_id = str(getattr(finding, "rule_id", "")).upper()
+                category = str(getattr(finding, "category", "") or "").lower()
+                if category == "network" or "NET" in rule_id:
                     network_findings.append(finding)
                 else:
                     host_findings.append(finding)

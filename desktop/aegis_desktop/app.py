@@ -6,7 +6,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from aegis_desktop.theme import apply_theme
+from aegis_desktop.styles import apply_enterprise_theme
 from aegis_shared.version import __version__
 
 
@@ -25,7 +25,7 @@ def create_application(argv: list[str] | None = None) -> QApplication:
     app.setApplicationDisplayName("Aegis IDPS")
     app.setOrganizationName("Aegis IDPS")
     app.setApplicationVersion(__version__)
-    apply_theme(app)
+    apply_enterprise_theme(app)
     return app
 
 

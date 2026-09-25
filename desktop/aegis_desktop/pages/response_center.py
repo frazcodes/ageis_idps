@@ -1,8 +1,21 @@
 """Response Center page: desktop-managed dry-run + approval + execution workflow.
 
+The page presents the response workflow as a strict, staged execution pipeline:
+
+``[ DRAFT ] ── [ DRY RUN ] ── [ PENDING APPROVAL ] ── [ EXECUTED ]``
+
+Selecting a request renders three things: the lifecycle stepper (which stages
+are done, active, locked or failed), an *Execution Preview* box showing the
+deterministic dry-run outcome, and a state-dependent control block with
+high-contrast buttons (blue *Run Dry Run*, amber *Approve Action*, red
+*Execute Response*).  A read-only audit log of previous executions sits at the
+bottom of the page.
+
 Table + detail view of response requests.  Buttons drive the workflow states
 (Dry Run, Approve, Reject, Execute).  Execution is only available for approved
-BLOCK_IP requests and requires an explicit confirmation.
+BLOCK_IP requests and requires an explicit confirmation.  All workflow state
+changes go through the existing :class:`ResponseWorkflowManager` — this module
+never touches the firewall itself.
 """
 
 from __future__ import annotations
@@ -26,6 +39,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -42,6 +56,7 @@ from aegis_desktop.services.response_workflow import (
     get_audit_history,
     get_workflow_manager,
 )
+from aegis_desktop.styles import apply_severity_style
 from aegis_desktop.theme import state_color
 from aegis_shared.logging import get_logger
 
@@ -89,6 +104,103 @@ _INITIAL_HINT = (
 _NO_DATA_TEXT = "Requests: No data"
 
 _NO_INDEX = QModelIndex()
+
+# -- Response execution pipeline ---------------------------------------------
+
+#: Stepper stages, in lifecycle order.
+PIPELINE_STAGES: tuple[str, ...] = (
+    "DRAFT",
+    "DRY RUN",
+    "PENDING APPROVAL",
+    "EXECUTED",
+)
+
+#: Short guidance shown under each stage title.
+_PIPELINE_HINTS: tuple[str, ...] = (
+    "Request created",
+    "Simulated only",
+    "Analyst authorization",
+    "Controlled change",
+)
+
+#: Workflow status -> index of the active (highlighted) stage.
+_STATUS_STAGE: dict[str, int] = {
+    "draft": 0,
+    "dry_run_ready": 0,
+    "dry_run_completed": 2,
+    "pending_approval": 2,
+    "approved": 3,
+    "executed": 3,
+    "execution_failed": 3,
+    "rejected": 2,
+    "cancelled": 2,
+}
+
+_STAGE_DONE = "done"
+_STAGE_ACTIVE = "active"
+_STAGE_FUTURE = "future"
+_STAGE_ERROR = "error"
+
+_STAGE_ORDER: tuple[str, ...] = (
+    _STAGE_DONE,
+    _STAGE_ACTIVE,
+    _STAGE_FUTURE,
+    _STAGE_ERROR,
+)
+
+_PREVIEW_BADGE_STATES: dict[str, str] = {
+    "would_apply": "low",
+    "blocked": "critical",
+    "invalid": "critical",
+    "not_started": "info",
+}
+
+#: Analyst-facing explanation shown under the execution preview action line.
+_PREVIEW_NOTES: dict[str, str] = {
+    "would_apply": (
+        "Dry run complete: this change would be applied on execution. "
+        "Nothing has been modified on this host yet."
+    ),
+    "blocked": (
+        "Dry run complete: policy blocked this action. "
+        "Execution is not possible for this request."
+    ),
+    "invalid": (
+        "Dry run could not validate this action. "
+        "Review the request before any further step."
+    ),
+    "not_started": (
+        "No dry run yet — this is the planned action only. "
+        "Run the dry run before requesting approval."
+    ),
+}
+
+_CONTROL_HINTS: dict[str, str] = {
+    "draft": (
+        "Stage 1 of 4 — nothing is changed on this host until a dry run, "
+        "an approval and an explicit execution step are all completed."
+    ),
+    "dry_run_ready": (
+        "Stage 1 of 4 — run the dry run to validate the action before it "
+        "can be submitted for approval."
+    ),
+    "dry_run_completed": (
+        "Stage 2 of 4 — dry run complete. Submit the request for analyst "
+        "approval; execution stays locked until it is approved."
+    ),
+    "pending_approval": (
+        "Stage 3 of 4 — elevated intent required: approving authorizes a "
+        "future firewall change but does not apply anything by itself."
+    ),
+    "approved": (
+        "Stage 4 of 4 — approved. Executing this request modifies the local "
+        "firewall and is recorded in the audit log."
+    ),
+    "rejected": "This request was rejected. No action will be executed.",
+    "cancelled": "This request was cancelled. No action will be executed.",
+    "executed": "This request was executed. See the audit log below.",
+    "execution_failed": "Execution failed. No change was applied.",
+}
 
 
 class _ExecutionConfirmDialog(QDialog):
@@ -336,6 +448,13 @@ class ResponseCenterPage(BasePage):
         self._hint_label.setWordWrap(True)
         layout.addWidget(self._hint_label)
 
+        self._pipeline_card = self._build_pipeline_card()
+        self._pipeline_card.setVisible(False)
+        self._preview_action_text = ""
+        self._preview_status_text = ""
+        self._preview_note_text = ""
+        layout.addWidget(self._pipeline_card)
+
         self._model = RequestTableModel(self)
         self._proxy = QSortFilterProxyModel(self)
         self._proxy.setSourceModel(self._model)
@@ -373,8 +492,15 @@ class ResponseCenterPage(BasePage):
             self._audit_table.setColumnWidth(index, width)
         self._audit_table.sortByColumn(11, Qt.SortOrder.DescendingOrder)
 
-        audit_heading = QLabel("RESPONSE AUDIT HISTORY")
+        audit_heading = QLabel("AUDIT HISTORY (READ-ONLY)")
         audit_heading.setObjectName("CardTitle")
+
+        audit_hint = QLabel(
+            "Recent executions recorded in memory: what ran, the policy decision, "
+            "verification result and timestamp. This log cannot be edited.",
+        )
+        audit_hint.setObjectName("CardHint")
+        audit_hint.setWordWrap(True)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.addWidget(self._table)
@@ -388,6 +514,7 @@ class ResponseCenterPage(BasePage):
         audit_layout.setContentsMargins(0, 0, 0, 0)
         audit_layout.setSpacing(4)
         audit_layout.addWidget(audit_heading)
+        audit_layout.addWidget(audit_hint)
         audit_layout.addWidget(self._audit_table)
         layout.addWidget(audit_container, 1)
 
@@ -452,11 +579,28 @@ class ResponseCenterPage(BasePage):
         self._detail_layout.setSpacing(10)
         outer.addWidget(self._detail_container)
 
-        self._controls_container = QWidget()
-        self._controls_layout = QVBoxLayout(self._controls_container)
-        self._controls_layout.setContentsMargins(0, 0, 0, 0)
+        # Persistent action-control block.  It is inserted into the detail
+        # layout by _render_controls() so the buttons always live next to the
+        # request detail they act on, and so _clear_detail() can reuse one
+        # widget instead of recreating it on every selection.
+        self._controls_container = QFrame()
+        self._controls_container.setObjectName("Card")
+        controls_outer = QVBoxLayout(self._controls_container)
+        controls_outer.setContentsMargins(14, 10, 14, 10)
+        controls_outer.setSpacing(8)
+
+        controls_heading = QLabel("ACTION CONTROLS")
+        controls_heading.setObjectName("CardTitle")
+        controls_outer.addWidget(controls_heading)
+
+        self._controls_hint = QLabel("")
+        self._controls_hint.setObjectName("CardHint")
+        self._controls_hint.setWordWrap(True)
+        controls_outer.addWidget(self._controls_hint)
+
+        self._controls_layout = QVBoxLayout()
         self._controls_layout.setSpacing(6)
-        outer.addWidget(self._controls_container)
+        controls_outer.addLayout(self._controls_layout)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -480,6 +624,172 @@ class ResponseCenterPage(BasePage):
         form.setVerticalSpacing(3)
         layout.addLayout(form)
         return frame, form
+
+    # -- Execution pipeline (stepper) --------------------------------------
+
+    def _build_pipeline_card(self) -> QFrame:
+        """Build the four-stage lifecycle stepper shown above the request table."""
+        card = QFrame()
+        card.setObjectName("PipelineCard")
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 12, 16, 12)
+        outer.setSpacing(8)
+
+        head = QHBoxLayout()
+        head.setSpacing(10)
+        heading = QLabel("RESPONSE EXECUTION PIPELINE")
+        heading.setObjectName("CardTitle")
+        head.addWidget(heading)
+        head.addStretch(1)
+
+        self._pipeline_status_badge = QLabel("")
+        self._pipeline_status_badge.setObjectName("PreviewStatus")
+        self._pipeline_status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        head.addWidget(self._pipeline_status_badge)
+        outer.addLayout(head)
+
+        self._pipeline_meta = QLabel("No request selected.")
+        self._pipeline_meta.setObjectName("PipelineMeta")
+        self._pipeline_meta.setWordWrap(True)
+        outer.addWidget(self._pipeline_meta)
+
+        stages_row = QHBoxLayout()
+        stages_row.setSpacing(4)
+        self._stage_frames: list[QFrame] = []
+        self._stage_titles: list[QLabel] = []
+        self._stage_states: list[QLabel] = []
+        self._stage_hints: list[QLabel] = []
+        for index, title in enumerate(PIPELINE_STAGES):
+            if index:
+                arrow = QLabel("➔")
+                arrow.setObjectName("PipelineArrow")
+                arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                stages_row.addWidget(arrow)
+            frame, title_label, state_label, hint_label = self._build_stage(index, title)
+            self._stage_frames.append(frame)
+            self._stage_titles.append(title_label)
+            self._stage_states.append(state_label)
+            self._stage_hints.append(hint_label)
+            stages_row.addWidget(frame, 1)
+        outer.addLayout(stages_row)
+        return card
+
+    @staticmethod
+    def _build_stage(index: int, title: str) -> tuple[QFrame, QLabel, QLabel, QLabel]:
+        """Create one stepper stage widget (title, state text and hint labels)."""
+        frame = QFrame()
+        frame.setObjectName("PipelineStage")
+        frame.setProperty("stage_state", _STAGE_FUTURE)
+        frame.setMinimumHeight(70)
+
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(2)
+
+        title_label = QLabel(f"{index + 1}. {title}")
+        title_label.setObjectName("PipelineStageTitle")
+        title_label.setProperty("stage_state", _STAGE_FUTURE)
+        layout.addWidget(title_label)
+
+        state_label = QLabel("LOCKED")
+        state_label.setObjectName("PipelineStageState")
+        state_label.setProperty("stage_state", _STAGE_FUTURE)
+        layout.addWidget(state_label)
+
+        hint_label = QLabel("Locked")
+        hint_label.setObjectName("PipelineStageHint")
+        hint_label.setWordWrap(True)
+        layout.addWidget(hint_label)
+        return frame, title_label, state_label, hint_label
+
+    def _render_pipeline(self, view: ResponseRequestView) -> None:
+        """Render the lifecycle stepper for the selected request."""
+        states = self._stage_states_for(view)
+        for index, frame in enumerate(self._stage_frames):
+            state = states[index]
+            self._set_stage_state(frame, state)
+            self._set_stage_state(self._stage_titles[index], state)
+            self._set_stage_state(self._stage_states[index], state)
+            self._stage_states[index].setText(self._stage_state_text(view, index, state))
+            hint = self._stage_hints[index]
+            if state == _STAGE_FUTURE:
+                hint.setText("Locked — previous stage incomplete")
+            else:
+                hint.setText(_PIPELINE_HINTS[index])
+            self._set_stage_state(hint, state)
+
+        self._pipeline_meta.setText(
+            f"{view.request_id}  ·  {view.action_label}  ·  {view.target}  ·  "
+            f"risk {view.risk_level.upper()} ({view.risk_score})",
+        )
+        badge = self._pipeline_status_badge
+        badge.setText(view.status.upper())
+        apply_severity_style(badge, self._status_severity(view.status))
+        self._pipeline_card.setVisible(True)
+
+    @staticmethod
+    def _stage_states_for(view: ResponseRequestView) -> tuple[str, str, str, str]:
+        """Return the visual state (done/active/future/error) for each stage."""
+        current = _STATUS_STAGE.get(view.status, 0)
+        states: list[str] = []
+        for index in range(len(PIPELINE_STAGES)):
+            if index < current:
+                states.append(_STAGE_DONE)
+            elif index > current:
+                states.append(_STAGE_FUTURE)
+            elif view.status == "executed":
+                states.append(_STAGE_DONE)
+            elif view.status in ("rejected", "cancelled", "execution_failed"):
+                states.append(_STAGE_ERROR)
+            else:
+                states.append(_STAGE_ACTIVE)
+        return tuple(states)
+
+    @staticmethod
+    def _stage_state_text(view: ResponseRequestView, index: int, state: str) -> str:
+        """Human-readable stage state for the selected request."""
+        if state == _STAGE_FUTURE:
+            return "LOCKED"
+        if state == _STAGE_ERROR:
+            if index == 2:
+                return view.status.upper()
+            return "FAILED"
+        if index == 0:
+            return "COMPLETE" if state == _STAGE_DONE else "CREATED"
+        if index == 1:
+            if state == _STAGE_DONE:
+                return (view.dry_run_status or "NOT_RUN").upper()
+            return "NOT RUN"
+        if index == 2:
+            if state == _STAGE_DONE:
+                return "APPROVED"
+            if view.status == "dry_run_completed":
+                return "READY TO SUBMIT"
+            return "AWAITING APPROVAL"
+        if state == _STAGE_DONE:
+            return "APPLIED"
+        return "READY TO EXECUTE"
+
+    @staticmethod
+    def _status_severity(status: str) -> str:
+        """Map a workflow status onto the semantic severity palette."""
+        if status in ("executed",):
+            return "low"
+        if status in ("execution_failed", "rejected", "cancelled"):
+            return "critical"
+        if status in ("pending_approval", "approved", "dry_run_completed"):
+            return "medium"
+        return "info"
+
+    @staticmethod
+    def _set_stage_state(widget: QWidget, state: str) -> None:
+        """Apply the ``stage_state`` dynamic property and repolish the widget."""
+        if widget.property("stage_state") == state:
+            return
+        widget.setProperty("stage_state", state)
+        style = widget.style()
+        style.unpolish(widget)
+        style.polish(widget)
 
     # -- Refresh -----------------------------------------------------------
 
@@ -583,6 +893,10 @@ class ResponseCenterPage(BasePage):
         self._clear_detail()
         self._detail_hint.setVisible(False)
 
+        # Lifecycle stepper (top of page) + execution preview (first section)
+        self._render_pipeline(view)
+        self._detail_layout.addWidget(self._build_execution_preview(view))
+
         # Request Info
         frame, form = self._build_section("RESPONSE REQUEST")
         self._detail_layout.addWidget(frame)
@@ -627,103 +941,258 @@ class ResponseCenterPage(BasePage):
         self._add_field(form, "Created", format_timestamp(view.created_at))
         self._add_field(form, "Updated", format_timestamp(view.updated_at))
 
-        self._detail_layout.addStretch(1)
-
-        # Controls (state-dependent)
-        self._render_controls(view)
-
-    def _render_controls(self, view: ResponseRequestView) -> None:
-        """Add state-dependent workflow buttons."""
-        status = view.status
-
-        if status in ("draft", "dry_run_ready"):
-            btn = QPushButton("Run Dry Run")
-            btn.setObjectName("PrimaryButton")
-            btn.clicked.connect(
-                lambda checked=False, rid=view.request_id: self._on_dry_run(rid)
-            )
-            self._controls_layout.addWidget(btn)
-
-        if status == "dry_run_completed":
-            approve_btn = QPushButton("Approve")
-            approve_btn.setObjectName("PrimaryButton")
-            approve_btn.clicked.connect(
-                lambda checked=False, rid=view.request_id: self._on_approve(rid)
-            )
-            self._controls_layout.addWidget(approve_btn)
-
-            reject_btn = QPushButton("Reject")
-            reject_btn.setObjectName("PrimaryButton")
-            reject_btn.clicked.connect(
-                lambda checked=False, rid=view.request_id: self._on_reject(rid)
-            )
-            self._controls_layout.addWidget(reject_btn)
-
-        if status == "approved":
-            # Show execution section for approved requests
-            if view.action_label == "Block IP":
-                exec_frame, exec_form = self._build_section("RESPONSE EXECUTION")
-                self._detail_layout.addWidget(exec_frame)
-                self._add_field(exec_form, "Action", view.action_label)
-                self._add_field(exec_form, "Target", view.target)
+        # Execution result (read-only record of what the executor did)
+        if view.status in ("approved", "executed", "execution_failed"):
+            exec_frame, exec_form = self._build_section("RESPONSE EXECUTION")
+            self._detail_layout.addWidget(exec_frame)
+            self._add_field(exec_form, "Action", view.action_label)
+            self._add_field(exec_form, "Target", view.target)
+            if view.status == "approved":
                 self._add_field(exec_form, "Approval", "APPROVED")
                 self._add_field(exec_form, "Execution", "READY")
+            elif view.status == "executed":
+                self._add_field(exec_form, "Status", "APPLIED")
+                self._add_field(exec_form, "Firewall", view.execution_adapter or MISSING)
+                verified = "VERIFIED" if view.execution_verified else "NOT VERIFIED"
+                self._add_field(exec_form, "Verification", verified)
+                changed = "YES" if view.execution_changed else "NO"
+                self._add_field(exec_form, "Changed", changed)
+                if view.execution_message:
+                    self._add_field(exec_form, "Message", view.execution_message)
+            else:
+                self._add_field(exec_form, "Status", "FAILED")
+                if view.execution_message:
+                    self._add_field(exec_form, "Reason", view.execution_message)
+                self._add_field(exec_form, "Verification", "NOT VERIFIED")
 
-                exec_btn = QPushButton("Execute Response")
-                exec_btn.setObjectName("PrimaryButton")
-                exec_btn.clicked.connect(
-                    lambda checked=False, v=view: self._on_execute(v)
+        # Controls (state-dependent) — kept above the trailing stretch so the
+        # analyst never has to scroll to reach the next action.
+        self._render_controls(view)
+
+        self._detail_layout.addStretch(1)
+
+    # -- Execution preview --------------------------------------------------
+
+    @staticmethod
+    def _action_code(action_label: str) -> str:
+        """Map a display label (``Block IP``) onto its action code (``BLOCK_IP``)."""
+        code = (action_label or "").strip().replace(" ", "_").upper()
+        return code or MISSING
+
+    @staticmethod
+    def _adapter_label(view: ResponseRequestView) -> str:
+        """Adapter that would perform this action (name after execution)."""
+        if view.execution_adapter:
+            return view.execution_adapter
+        if ResponseCenterPage._action_code(view.action_label) == "BLOCK_IP":
+            try:
+                from aegis_response_engine.firewall.windows import WindowsFirewallAdapter
+
+                return WindowsFirewallAdapter.__name__
+            except Exception:  # pragma: no cover - engine always installed
+                return "WindowsFirewallAdapter"
+        return "NO ADAPTER"
+
+    def _build_execution_preview(self, view: ResponseRequestView) -> QFrame:
+        """Build the Execution Preview box (dry-run outcome before approval)."""
+        frame = QFrame()
+        frame.setObjectName("Card")
+        outer = QVBoxLayout(frame)
+        outer.setContentsMargins(14, 10, 14, 10)
+        outer.setSpacing(6)
+
+        heading = QLabel("EXECUTION PREVIEW")
+        heading.setObjectName("CardTitle")
+        outer.addWidget(heading)
+
+        dry_status = (view.dry_run_status or "not_started").strip().lower()
+        if dry_status not in _PREVIEW_BADGE_STATES:
+            dry_status = "not_started"
+
+        status_row = QHBoxLayout()
+        status_row.setSpacing(10)
+        badge = QLabel(dry_status.upper())
+        badge.setObjectName("PreviewStatus")
+        apply_severity_style(badge, _PREVIEW_BADGE_STATES[dry_status])
+        status_row.addWidget(badge)
+
+        mode = QLabel("SIMULATION ONLY" if dry_status != "not_started" else "PLANNED ACTION")
+        mode.setObjectName("CardHint")
+        status_row.addWidget(mode)
+        status_row.addStretch(1)
+        outer.addLayout(status_row)
+
+        action_text = (
+            f"Action: {self._action_code(view.action_label)} {view.target} "
+            f"using {self._adapter_label(view)}"
+        )
+        action = QLabel(action_text)
+        action.setObjectName("PreviewAction")
+        action.setWordWrap(True)
+        action.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        outer.addWidget(action)
+        self._preview_action_text = action_text
+
+        note = QLabel(_PREVIEW_NOTES[dry_status])
+        note.setObjectName("PreviewNote")
+        note.setWordWrap(True)
+        outer.addWidget(note)
+        self._preview_status_text = badge.text()
+        self._preview_note_text = note.text()
+
+        detail = QLabel(
+            f"Policy: {(view.policy_decision or MISSING).upper()}"
+            f"{f' · v{view.policy_version}' if view.policy_version else ''}  ·  "
+            f"Risk: {view.risk_level.upper()} ({view.risk_score})",
+        )
+        detail.setObjectName("CardHint")
+        detail.setWordWrap(True)
+        outer.addWidget(detail)
+        return frame
+
+    def _render_controls(self, view: ResponseRequestView) -> None:
+        """Add the state-dependent, high-contrast action controls."""
+        status = view.status
+        dry_status = (view.dry_run_status or "").strip().lower()
+        hint = _CONTROL_HINTS.get(status, "")
+        if status == "dry_run_completed" and dry_status != "would_apply":
+            hint = (
+                f"Dry run result is {dry_status.upper() or 'UNKNOWN'} — policy does "
+                "not permit this action, so it cannot be submitted for approval."
+            )
+        self._controls_hint.setText(hint)
+
+        if status in ("draft", "dry_run_ready"):
+            self._controls_layout.addWidget(
+                self._make_button(
+                    "Run Dry Run",
+                    "PrimaryButton",
+                    lambda rid=view.request_id: self._on_dry_run(rid),
+                ),
+            )
+
+        elif status == "dry_run_completed":
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            if dry_status == "would_apply":
+                row.addWidget(
+                    self._make_button(
+                        "Submit for Approval",
+                        "WarningButton",
+                        lambda rid=view.request_id: self._on_submit_approval(rid),
+                    ),
                 )
-                btn_row = QHBoxLayout()
-                btn_row.addWidget(exec_btn)
-                btn_row.addStretch(1)
-                exec_form.addRow(btn_row)
+            row.addWidget(
+                self._make_button(
+                    "Cancel Request",
+                    "DangerButton",
+                    lambda rid=view.request_id: self._on_cancel(rid),
+                ),
+            )
+            row.addStretch(1)
+            self._controls_layout.addLayout(row)
+
+        elif status == "pending_approval":
+            row = QHBoxLayout()
+            row.setSpacing(8)
+            row.addWidget(
+                self._make_button(
+                    "Approve Action",
+                    "WarningButton",
+                    lambda rid=view.request_id: self._on_approve(rid),
+                ),
+            )
+            row.addWidget(
+                self._make_button(
+                    "Reject",
+                    "DangerButton",
+                    lambda rid=view.request_id: self._on_reject(rid),
+                ),
+            )
+            row.addStretch(1)
+            self._controls_layout.addLayout(row)
+
+        elif status == "approved":
+            if view.action_label == "Block IP":
+                row = QHBoxLayout()
+                row.setSpacing(8)
+                row.addWidget(
+                    self._make_button(
+                        "Execute Response",
+                        "CriticalButton",
+                        lambda v=view: self._on_execute(v),
+                    ),
+                )
+                row.addStretch(1)
+                self._controls_layout.addLayout(row)
             else:
                 info = QLabel("APPROVED\n\nExecution:\nNOT AVAILABLE IN THIS VERSION")
                 info.setObjectName("FieldValue")
                 info.setWordWrap(True)
                 self._controls_layout.addWidget(info)
 
-        if status == "executed":
-            exec_frame, exec_form = self._build_section("RESPONSE EXECUTION")
-            self._detail_layout.addWidget(exec_frame)
-            self._add_field(exec_form, "Action", view.action_label)
-            self._add_field(exec_form, "Target", view.target)
-            self._add_field(exec_form, "Status", "APPLIED")
-            self._add_field(exec_form, "Firewall", view.execution_adapter)
-            verified_text = "VERIFIED" if view.execution_verified else "NOT VERIFIED"
-            self._add_field(exec_form, "Verification", verified_text)
-            changed_text = "YES" if view.execution_changed else "NO"
-            self._add_field(exec_form, "Changed", changed_text)
-            if view.execution_message:
-                self._add_field(exec_form, "Message", view.execution_message)
-
-        if status == "execution_failed":
-            exec_frame, exec_form = self._build_section("RESPONSE EXECUTION")
-            self._detail_layout.addWidget(exec_frame)
-            self._add_field(exec_form, "Action", view.action_label)
-            self._add_field(exec_form, "Target", view.target)
-            self._add_field(exec_form, "Status", "FAILED")
-            if view.execution_message:
-                self._add_field(exec_form, "Reason", view.execution_message)
-            self._add_field(exec_form, "Verification", "NOT VERIFIED")
-
-        if status == "rejected":
-            info = QLabel("REJECTED")
+        elif status == "executed":
+            info = QLabel(
+                f"EXECUTED — {view.execution_adapter or 'Firewall'} · "
+                f"{'VERIFIED' if view.execution_verified else 'NOT VERIFIED'} · "
+                f"changed {'YES' if view.execution_changed else 'NO'}",
+            )
             info.setObjectName("FieldValue")
             info.setWordWrap(True)
             self._controls_layout.addWidget(info)
 
-        if status == "cancelled":
-            info = QLabel("CANCELLED")
+        elif status == "execution_failed":
+            info = QLabel(
+                f"EXECUTION FAILED — {view.execution_message or 'no detail available'}",
+            )
             info.setObjectName("FieldValue")
             info.setWordWrap(True)
             self._controls_layout.addWidget(info)
+
+        elif status in ("rejected", "cancelled"):
+            info = QLabel(f"{status.upper()} — this request will not be executed.")
+            info.setObjectName("FieldValue")
+            info.setWordWrap(True)
+            self._controls_layout.addWidget(info)
+
+        self._detail_layout.addWidget(self._controls_container)
+
+    @staticmethod
+    def _make_button(
+        text: str,
+        object_name: str,
+        slot: Callable[[], None],
+    ) -> QPushButton:
+        """Create a state-coloured action button."""
+        button = QPushButton(text)
+        button.setObjectName(object_name)
+        button.clicked.connect(lambda checked=False, cb=slot: cb())
+        return button
 
     def _on_dry_run(self, request_id: str) -> None:
+        """Run the dry run and, when it would apply, submit for approval."""
         manager = self._manager_provider()
         manager.run_dry_run(request_id)
+        view = None
+        getter = getattr(manager, "get", None)
+        if getter is not None:
+            view = getter(request_id)
+        if view is None or view.dry_run_status == "would_apply":
+            manager.request_approval(request_id)
+        self.refresh()
+        self._re_select(request_id)
+
+    def _on_submit_approval(self, request_id: str) -> None:
+        """Move a completed dry run into the approval queue."""
+        manager = self._manager_provider()
         manager.request_approval(request_id)
+        self.refresh()
+        self._re_select(request_id)
+
+    def _on_cancel(self, request_id: str) -> None:
+        """Cancel a request that has not been approved yet."""
+        manager = self._manager_provider()
+        manager.cancel(request_id)
         self.refresh()
         self._re_select(request_id)
 
@@ -776,18 +1245,28 @@ class ResponseCenterPage(BasePage):
         form.addRow(key_label, value_label)
 
     def _clear_detail(self) -> None:
-        while self._detail_layout.count():
-            item = self._detail_layout.takeAt(0)
-            widget = item.widget() if item is not None else None
-            if widget is not None:
-                widget.setParent(None)
-        while self._controls_layout.count():
-            item = self._controls_layout.takeAt(0)
-            widget = item.widget() if item is not None else None
-            if widget is not None:
-                widget.setParent(None)
+        self._empty_layout(self._detail_layout)
+        self._empty_layout(self._controls_layout)
+        pipeline = getattr(self, "_pipeline_card", None)
+        if pipeline is not None:
+            pipeline.setVisible(False)
         self._detail_hint.setText("Select a response request to inspect its workflow details.")
         self._detail_hint.setVisible(True)
+
+    @staticmethod
+    def _empty_layout(layout: QLayout) -> None:
+        """Detach every widget (also inside nested row layouts) from ``layout``."""
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                break
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                continue
+            nested = item.layout()
+            if nested is not None:
+                ResponseCenterPage._empty_layout(nested)
 
     # -- Read-only accessors (used by tests) -------------------------------
 
@@ -835,5 +1314,51 @@ class ResponseCenterPage(BasePage):
     def audit_row_count(self) -> int:
         return self._audit_model.rowCount()
 
+    def pipeline_shown(self) -> bool:
+        """Whether the lifecycle stepper is currently displayed."""
+        return not self._pipeline_card.isHidden()
 
-__all__ = ["AuditTableModel", "RequestTableModel", "ResponseCenterPage"]
+    def pipeline_stage_titles(self) -> tuple[str, ...]:
+        return tuple(label.text() for label in self._stage_titles)
+
+    def pipeline_stage_states(self) -> tuple[str, ...]:
+        """Visual state (done/active/future/error) for each stepper stage."""
+        return tuple(str(frame.property("stage_state") or "") for frame in self._stage_frames)
+
+    def pipeline_stage_texts(self) -> tuple[str, ...]:
+        """State text (CREATED / WOULD_APPLY / AWAITING APPROVAL ...) per stage."""
+        return tuple(label.text() for label in self._stage_states)
+
+    def pipeline_meta_text(self) -> str:
+        return self._pipeline_meta.text()
+
+    def pipeline_status_text(self) -> str:
+        return self._pipeline_status_badge.text()
+
+    def preview_action_text(self) -> str:
+        """The execution-preview action line for the selected request."""
+        return self._preview_action_text
+
+    def preview_status_text(self) -> str:
+        """Dry-run badge text (``WOULD_APPLY``, ``BLOCKED``, ``NOT_STARTED``...)."""
+        return self._preview_status_text
+
+    def preview_note_text(self) -> str:
+        """Analyst-facing note shown under the preview action line."""
+        return self._preview_note_text
+
+    def control_hint_text(self) -> str:
+        return self._controls_hint.text()
+
+    def control_button_texts(self) -> tuple[str, ...]:
+        """Labels of the buttons currently offered for the selected request."""
+        buttons = self._controls_container.findChildren(QPushButton)
+        return tuple(button.text() for button in buttons)
+
+
+__all__ = [
+    "PIPELINE_STAGES",
+    "AuditTableModel",
+    "RequestTableModel",
+    "ResponseCenterPage",
+]

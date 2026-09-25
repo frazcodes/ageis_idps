@@ -144,7 +144,9 @@ def _agent(**overrides: object) -> AgentSettings:
 def _runtime(**kwargs: object) -> AegisRuntime:
     defaults: dict[str, object] = {
         "agent_settings": _agent(),
-        "sensor_settings": SensorSettings(),
+        # Isolate from developer/.env capture settings so tests never open a
+        # live pcap handle or depend on real traffic.
+        "sensor_settings": SensorSettings(capture_enabled=False, interface=""),
     }
     defaults.update(kwargs)
     return AegisRuntime(**defaults)  # type: ignore[arg-type]
@@ -419,8 +421,12 @@ def test_network_sensor_events_flow_when_enabled() -> None:
 # --- Configuration safety --------------------------------------------------
 
 
-def test_default_configuration_is_safe() -> None:
-    runtime = _runtime()
+def test_default_configuration_is_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A local .env (and the process environment) may enable capture for the
+    # live console; the shipped defaults themselves must stay disabled.
+    for key in ("AEGIS_SENSOR_CAPTURE_ENABLED", "AEGIS_SENSOR_INTERFACE"):
+        monkeypatch.delenv(key, raising=False)
+    runtime = _runtime(sensor_settings=SensorSettings(_env_file=None))
 
     assert runtime._agent.enabled_monitors == ()
     assert runtime._sensor_settings.capture_enabled is False

@@ -3,7 +3,9 @@
 The window owns the single :class:`~aegis_runtime.AegisRuntime` through a
 :class:`~aegis_desktop.services.monitoring.MonitoringController`. The Start/Stop
 control and one Qt timer drive that runtime; no second runtime loop exists.
-Opening the window starts nothing.
+Opening the window starts nothing. Pressing *Start Monitoring* first runs the
+read-only :class:`~aegis_desktop.preflight.PreflightDialog` checklist; the
+engine starts only after that checklist completes.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from aegis_desktop.navigation import NAV_ITEMS, Sidebar
 from aegis_desktop.pages import BasePage, create_page
+from aegis_desktop.preflight import PreflightDialog, preflight_enabled_from_env
 from aegis_desktop.services.monitoring import (
     CAPTURE_ACTIVE,
     CAPTURE_ERROR,
@@ -55,6 +58,9 @@ class MainWindow(QMainWindow):
 
         self._controller = controller or MonitoringController()
         set_active_monitoring_controller(self._controller)
+
+        self._preflight_enabled = preflight_enabled_from_env()
+        self._preflight_dialog: PreflightDialog | None = None
 
         self._pages: dict[str, BasePage] = {}
         self._sidebar = Sidebar()
@@ -172,11 +178,47 @@ class MainWindow(QMainWindow):
         return self._controller.status()
 
     def toggle_monitoring(self) -> None:
-        """Start monitoring if stopped, otherwise stop it."""
+        """Start monitoring after preflight, otherwise stop it."""
         if self._controller.is_running:
             self.stop_monitoring()
         else:
-            self.start_monitoring()
+            self.start_monitoring_with_preflight()
+
+    @property
+    def preflight_enabled(self) -> bool:
+        """Whether *Start Monitoring* runs the preflight checklist first."""
+        return self._preflight_enabled
+
+    @preflight_enabled.setter
+    def preflight_enabled(self, value: bool) -> None:
+        self._preflight_enabled = bool(value)
+
+    @property
+    def preflight_dialog(self) -> PreflightDialog | None:
+        """The last preflight dialog that was executed, or ``None``."""
+        return self._preflight_dialog
+
+    def start_monitoring_with_preflight(self) -> bool:
+        """Run the *System Diagnostics* checklist, then start monitoring.
+
+        The dialog is modal and self-closing: once every check resolves and
+        the settle delay elapses it closes itself and the engine starts. An
+        early cancel (Esc/Cancel) leaves monitoring untouched.
+        """
+        if not self._preflight_enabled:
+            return self.start_monitoring()
+
+        dialog = PreflightDialog(self)
+        self._preflight_dialog = dialog
+        dialog.exec()
+        if not dialog.is_completed():
+            self.statusBar().showMessage(
+                "Preflight cancelled \u2014 monitoring was not started."
+            )
+            self._preflight_dialog = None
+            return False
+        self._preflight_dialog = None
+        return self.start_monitoring()
 
     def start_monitoring(self) -> bool:
         """Start the runtime and begin the single bounded poll timer."""
