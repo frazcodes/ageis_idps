@@ -137,8 +137,8 @@ def _posture_card(
             "QPushButton { background-color: #1E293B; color: #E2E8F0; "
             "border: 1px solid #334155; border-radius: 6px; "
             "padding: 6px 14px; font-size: 12px; font-weight: 600; margin-top: 4px; }"
-            "QPushButton:hover { background-color: #2563EB; color: #FFFFFF; "
-            "border-color: #3B82F6; }"
+            "QPushButton:hover { background-color: #EF4444; color: #FFFFFF; "
+            "border-color: #DC2626; }"
         )
         outer.addWidget(btn)
 
@@ -177,7 +177,7 @@ class DashboardPage(BasePage):
 
     PAGE_KEY = "dashboard"
     ICON       = "◈"
-    ICON_COLOR = "#3B82F6"
+    ICON_COLOR = "#EF4444"
     TITLE = "Security Operations"
     SUBTITLE = (
         "Real-time SOC console: security posture, live network activity, "
@@ -636,9 +636,9 @@ class DashboardPage(BasePage):
             "QFrame#HeroShieldBanner {"
             "  background: qlineargradient("
             "    x1:0, y1:0, x2:1, y2:0,"
-            "    stop:0 #0B132B, stop:0.35 #0F1D36, stop:0.7 #0F233D, stop:1 #0B132B"
+            "    stop:0 #060A12, stop:0.35 #0B111D, stop:0.7 #0E1626, stop:1 #060A12"
             "  );"
-            "  border: 1px solid rgba(56, 189, 248, 0.35);"
+            "  border: 1px solid rgba(16, 185, 129, 0.35);"
             "  border-radius: 12px;"
             "}"
         )
@@ -653,8 +653,8 @@ class DashboardPage(BasePage):
         icon_box.setFixedSize(50, 50)
         icon_box.setStyleSheet(
             "QFrame#HeroShieldIconBox {"
-            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1E293B, stop:1 #0F172A);"
-            "  border: 1px solid #38BDF8;"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #111827, stop:1 #0A0F1A);"
+            "  border: 1px solid rgba(16, 185, 129, 0.5);"
             "  border-radius: 10px;"
             "}"
         )
@@ -672,7 +672,7 @@ class DashboardPage(BasePage):
         title_col.setContentsMargins(0, 0, 0, 0)
         title_col.setSpacing(4)
 
-        self._hero_status_title = QLabel("● SYSTEM PROTECTED  ·  ALL DEFENSE SHIELDS ARMED")
+        self._hero_status_title = QLabel("● SYSTEM SECURE  ·  ALL DEFENSE SHIELDS ARMED")
         self._hero_status_title.setObjectName("HeroStatusTitle")
         self._hero_status_title.setStyleSheet(
             "font-size: 14px; font-weight: 800; color: #10B981; letter-spacing: 0.6px;"
@@ -863,23 +863,23 @@ class DashboardPage(BasePage):
                 "QFrame#HeroShieldBanner {"
                 "  background: qlineargradient("
                 "    x1:0, y1:0, x2:1, y2:0,"
-                "    stop:0 #0B132B, stop:0.35 #0F1D36, stop:0.7 #0F233D, stop:1 #0B132B"
+                "    stop:0 #060A12, stop:0.35 #0B111D, stop:0.7 #0E1626, stop:1 #060A12"
                 "  );"
-                "  border: 1px solid rgba(56, 189, 248, 0.35);"
+                "  border: 1px solid rgba(16, 185, 129, 0.35);"
                 "  border-radius: 12px;"
                 "}"
             )
             self._hero_shield_icon_box.setStyleSheet(
                 "QFrame#HeroShieldIconBox {"
                 "  background: qlineargradient("
-                "    x1:0, y1:0, x2:1, y2:1, stop:0 #1E293B, stop:1 #0F172A"
+                "    x1:0, y1:0, x2:1, y2:1, stop:0 #111827, stop:1 #0A0F1A"
                 "  );"
-                "  border: 1px solid #38BDF8;"
+                "  border: 1px solid rgba(16, 185, 129, 0.5);"
                 "  border-radius: 10px;"
                 "}"
             )
             self._hero_shield_icon.setText("🛡️")
-            self._hero_status_title.setText("● SYSTEM PROTECTED  ·  ALL DEFENSE SHIELDS ARMED")
+            self._hero_status_title.setText("● SYSTEM SECURE  ·  ALL DEFENSE SHIELDS ARMED")
             self._hero_status_title.setStyleSheet(
                 "font-size: 14px; font-weight: 800; color: #10B981; letter-spacing: 0.6px;"
             )
@@ -903,7 +903,7 @@ class DashboardPage(BasePage):
         card.setStyleSheet(
             "QFrame#Card { background-color: #0E1726; border: 1px solid #1E293B; "
             "border-radius: 8px; }"
-            "QFrame#Card:hover { border-color: #3B82F6; }"
+            "QFrame#Card:hover { border-color: #EF4444; }"
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(14, 10, 14, 10)
@@ -1121,25 +1121,25 @@ class DashboardPage(BasePage):
 <style>
   body {{
     font-family: 'Segoe UI', Arial, sans-serif;
-    background: #0B0F19;
-    color: #E2E8F0;
+    background: #05080E;
+    color: #FFFFFF;
     padding: 30px;
     margin: 0;
   }}
   .header {{
-    border-bottom: 2px solid #2563EB;
+    border-bottom: 2px solid #EF4444;
     padding-bottom: 15px;
     margin-bottom: 25px;
   }}
   .title {{
     font-size: 24px;
     font-weight: 800;
-    color: #38BDF8;
+    color: #FFFFFF;
     letter-spacing: 1px;
   }}
   .sub {{
     font-size: 13px;
-    color: #94A3B8;
+    color: #E2E8F0;
     margin-top: 4px;
   }}
   .badge-grid {{
@@ -1148,7 +1148,7 @@ class DashboardPage(BasePage):
     margin-bottom: 25px;
   }}
   .card {{
-    background: #0E1726;
+    background: #0B101B;
     border: 1px solid #1E293B;
     border-radius: 8px;
     padding: 15px;
@@ -1163,14 +1163,14 @@ class DashboardPage(BasePage):
   .card-val {{
     font-size: 28px;
     font-weight: 800;
-    color: #38BDF8;
+    color: #FFFFFF;
     margin: 6px 0;
   }}
   table {{
     width: 100%;
     border-collapse: collapse;
     margin-top: 10px;
-    background: #0E1726;
+    background: #0B101B;
     border-radius: 8px;
     overflow: hidden;
   }}
@@ -1181,8 +1181,8 @@ class DashboardPage(BasePage):
     font-size: 13px;
   }}
   th {{
-    background: #1E293B;
-    color: #94A3B8;
+    background: #111827;
+    color: #E2E8F0;
     font-weight: 700;
     font-size: 11px;
     text-transform: uppercase;
@@ -1193,9 +1193,9 @@ class DashboardPage(BasePage):
   .section-h {{
     font-size: 14px;
     font-weight: 800;
-    color: #F1F5F9;
+    color: #FFFFFF;
     letter-spacing: 0.8px;
-    border-left: 3px solid #38BDF8;
+    border-left: 3px solid #EF4444;
     padding-left: 10px;
     margin-bottom: 12px;
   }}
@@ -1778,9 +1778,9 @@ class DashboardPage(BasePage):
             inv_btn = QPushButton("Investigate →")
             inv_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             inv_btn.setStyleSheet(
-                "QPushButton { background: #1E293B; color: #93C5FD; border: 1px solid #334155; "
+                "QPushButton { background: #1E293B; color: #FFFFFF; border: 1px solid #334155; "
                 "border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 600; } "
-                "QPushButton:hover { background: #2563EB; color: #FFFFFF; border-color: #3B82F6; }"
+                "QPushButton:hover { background: #EF4444; color: #FFFFFF; border-color: #DC2626; }"
             )
             inv_btn.clicked.connect(lambda _c=False, nt=_nt, nid=_nid: (
                 self._navigate_to(

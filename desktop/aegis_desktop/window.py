@@ -125,9 +125,9 @@ class MainWindow(QMainWindow):
             background: qlineargradient(
                 x1:0, y1:0, x2:1, y2:0,
                 stop:0 transparent,
-                stop:0.2 #1D4ED8,
-                stop:0.5 #06B6D4,
-                stop:0.8 #1D4ED8,
+                stop:0.25 #EF4444,
+                stop:0.5 #DC2626,
+                stop:0.75 #EF4444,
                 stop:1   transparent
             ); border: none;
         """)
@@ -199,7 +199,7 @@ class MainWindow(QMainWindow):
                 border-radius: 6px;
             }
             QPushButton:hover {
-                background: #1E293B; color: #38BDF8;
+                background: #111827; color: #EF4444;
             }
         """)
         self._audio_btn.clicked.connect(self._on_audio_btn_clicked)
@@ -321,21 +321,21 @@ class MainWindow(QMainWindow):
             QPushButton#SidebarHygieneBtn {
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #0F172A,
-                    stop:1 #1E293B
+                    stop:0 #0B101B,
+                    stop:1 #111827
                 );
-                border: 1px solid #334155;
+                border: 1px solid #1E293B;
                 border-radius: 6px;
-                color: #38BDF8;
+                color: #FFFFFF;
                 font-size: 12px;
                 font-weight: 600;
                 padding: 8px 10px;
                 text-align: left;
             }
             QPushButton#SidebarHygieneBtn:hover {
-                background: #1E293B;
-                border-color: #38BDF8;
-                color: #F8FAFC;
+                background: #161F30;
+                border-color: #EF4444;
+                color: #FFFFFF;
             }
         """)
         self._hygiene_btn.clicked.connect(self.open_system_hygiene)
@@ -594,7 +594,7 @@ class MainWindow(QMainWindow):
                     border-radius: 6px;
                 }
                 QPushButton:hover {
-                    background: #1E293B; color: #38BDF8;
+                    background: #111827; color: #EF4444;
                 }
             """)
             self.show_toast(

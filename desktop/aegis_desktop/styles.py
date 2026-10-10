@@ -13,35 +13,35 @@ from PySide6.QtWidgets import QGraphicsDropShadowEffect, QWidget
 # --- Enterprise Design Tokens ----------------------------------------------
 
 # Backgrounds
-BG_DEEP_NAVY = "#0A0F1C"          # Global app canvas
-BG_SURFACE = "#111827"            # Card / panel background
-BG_SURFACE_ALT = "#161E2E"        # Alternating rows, secondary surfaces
-BG_ELEVATED = "#1E293B"           # Buttons, menus, dropdowns
-BG_SIDEBAR = "#0C1320"            # Navigation sidebar
+BG_DEEP_NAVY = "#06090F"          # Global app canvas: Obsidian Carbon Black
+BG_SURFACE = "#0B101B"            # Card / panel background
+BG_SURFACE_ALT = "#101624"        # Alternating rows, secondary surfaces
+BG_ELEVATED = "#172032"           # Buttons, menus, dropdowns
+BG_SIDEBAR = "#03060B"            # Navigation sidebar: Deep pure jet black
 
 # Borders
-BORDER_SUBTLE = "#1F2937"         # Card borders, subtle dividers
-BORDER_MEDIUM = "#374151"         # Stronger borders, focus states
-BORDER_STRONG = "#4B5563"         # Active/focused borders
+BORDER_SUBTLE = "#243044"         # Card borders, subtle dividers
+BORDER_MEDIUM = "#2B3648"         # Stronger borders, focus states
+BORDER_STRONG = "#475569"         # Active/focused borders
 
 # Typography
-TEXT_PRIMARY = "#F8FAFC"          # Titles, primary text
-TEXT_SECONDARY = "#CBD5E1"        # Body text
+TEXT_PRIMARY = "#FFFFFF"          # Titles, primary text: Pure crisp white
+TEXT_SECONDARY = "#E2E8F0"        # Body text: Bright clean silver
 TEXT_MUTED = "#94A3B8"            # Labels, hints
 TEXT_DISABLED = "#64748B"         # Disabled text
 
-# Accents & Severity (Neon/Cyber palette)
-ACCENT_PRIMARY = "#1D4ED8"        # Primary brand blue (sidebar active)
-ACCENT_PRIMARY_HOVER = "#2563EB"
-ACCENT_PRIMARY_PRESSED = "#1E40AF"
-ACCENT_SOFT = "#172554"           # Soft blue surface
+# Accents & Severity (Defense Crimson & Emerald palette - NO BLUE)
+ACCENT_PRIMARY = "#EF4444"        # Primary brand red (sidebar active / action)
+ACCENT_PRIMARY_HOVER = "#F87171"
+ACCENT_PRIMARY_PRESSED = "#DC2626"
+ACCENT_SOFT = "rgba(239, 68, 68, 0.14)"           # Soft crimson glow
 
-# Severity accents (Neon)
-SEV_CRITICAL = "#EF4444"          # Neon Red
-SEV_HIGH = "#FB923C"              # Neon Orange
-SEV_MEDIUM = "#F59E0B"            # Neon Amber
-SEV_LOW = "#10B981"               # Neon Green
-SEV_INFO = "#38BDF8"              # Cyber Blue
+# Severity accents
+SEV_CRITICAL = "#EF4444"          # Crimson Red
+SEV_HIGH = "#FB923C"              # Vibrant Orange
+SEV_MEDIUM = "#F59E0B"            # Vibrant Amber
+SEV_LOW = "#10B981"               # Emerald Green
+SEV_INFO = "#E2E8F0"              # Crisp Silver White
 
 # State colors
 STATE_RUNNING = "#10B981"         # Green
@@ -50,9 +50,9 @@ STATE_WARNING = "#F59E0B"         # Amber
 STATE_ERROR = "#EF4444"           # Red
 
 # Table/Row states
-ROW_HOVER = "#1A2A4A"             # Subtle blue-tinted hover
-ROW_SELECTED = "#1E3A5F"          # Selected row
-ROW_LINE = "#1E2A3E"              # Subtle horizontal divider
+ROW_HOVER = "#121926"             # Subtle slate hover (no blue tint)
+ROW_SELECTED = "#1B2436"          # Selected row highlight
+ROW_LINE = "#161E2D"              # Subtle horizontal divider
 
 # Typography
 FONT_FAMILY = '"Inter", "Segoe UI", "Roboto", "Arial", sans-serif'
@@ -119,47 +119,52 @@ QToolTip {{
 }}
 
 #Sidebar::item {{
-    padding: 9px 12px 9px 10px;
-    margin: 1px 4px;
+    padding: 10px 14px 10px 12px;
+    margin: 2px 4px;
     border-radius: 8px;
     border-left: 3px solid transparent;
     color: {TEXT_MUTED};
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
-    min-height: 32px;
+    min-height: 34px;
 }}
 
 #Sidebar::item:hover {{
-    background-color: rgba(30, 41, 59, 0.85);
-    color: {TEXT_SECONDARY};
-    border-left: 3px solid rgba(29, 78, 216, 0.4);
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #FFFFFF;
+    border-left: 3px solid rgba(239, 68, 68, 0.5);
 }}
 
 #Sidebar::item:selected {{
-    background-color: rgba(23, 37, 84, 0.80);
-    color: {TEXT_PRIMARY};
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(239, 68, 68, 0.22),
+        stop:1 rgba(15, 23, 42, 0.70)
+    );
+    color: #FFFFFF;
     font-weight: 700;
-    border-left: 3px solid {ACCENT_PRIMARY};
+    border-left: 3px solid #EF4444;
 }}
 
 #SidebarBrand {{
     background-color: {BG_SIDEBAR};
     border-bottom: 1px solid {BORDER_SUBTLE};
-    padding: 16px 12px;
+    padding: 18px 14px;
 }}
 
 #SidebarBrandTitle {{
     font-size: 18px;
-    font-weight: 800;
-    color: {TEXT_PRIMARY};
-    letter-spacing: 1.5px;
+    font-weight: 900;
+    color: #FFFFFF;
+    letter-spacing: 2px;
 }}
 
 #SidebarBrandSubtitle {{
     color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_XS};
-    letter-spacing: 1px;
+    font-size: 11px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
+    font-weight: 600;
 }}
 
 /* --- Header ------------------------------------------------------------- */
@@ -358,9 +363,9 @@ QPushButton:disabled {{
 }}
 
 #PrimaryButton {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1D4ED8);
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #EF4444, stop:1 #DC2626);
     color: #FFFFFF;
-    border: 1px solid #3B82F6;
+    border: 1px solid #F87171;
     border-radius: 6px;
     padding: 7px 18px;
     font-weight: 700;
@@ -368,19 +373,19 @@ QPushButton:disabled {{
 }}
 
 #PrimaryButton:hover {{
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3B82F6, stop:1 #2563EB);
-    border-color: #60A5FA;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #F87171, stop:1 #EF4444);
+    border-color: #FCA5A5;
 }}
 
 #PrimaryButton:pressed {{
-    background-color: #1E40AF;
-    border-color: #1D4ED8;
+    background-color: #B91C1C;
+    border-color: #991B1B;
 }}
 
 #PrimaryButton:disabled {{
-    background-color: #161E2E;
+    background-color: #1A2438;
     color: #64748B;
-    border-color: #1F2937;
+    border-color: #1E293B;
 }}
 
 /* Secondary/Ghost Button */
@@ -819,7 +824,7 @@ QSplitter::handle {{
 }}
 
 QSplitter::handle:hover {{
-    background-color: #3B82F6;
+    background-color: #EF4444;
 }}
 
 QSplitter::handle:horizontal {{ width: 3px; }}

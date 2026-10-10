@@ -16,28 +16,28 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication, QWidget
 
 # --- Dark SOC design tokens ------------------------------------------------
-BACKGROUND = "#0F172A"  # app canvas: dark navy
-SIDEBAR = "#111827"  # navigation / status bar
-PANEL = "#1E293B"  # primary panels, cards, tables
-SURFACE_ALT = "#182235"  # secondary surface / alternating rows
-ELEVATED = "#243247"  # elevated surface (buttons, menus)
-BORDER = "#334155"  # subtle borders
-BORDER_STRONG = "#475569"  # stronger borders
-TEXT = "#F8FAFC"  # primary text
-TEXT_SECONDARY = "#CBD5E1"  # secondary text
+BACKGROUND = "#06090F"  # app canvas: obsidian carbon black
+SIDEBAR = "#03060B"     # navigation: deep pure jet black
+PANEL = "#0B101B"       # primary panels, cards, tables
+SURFACE_ALT = "#101624" # secondary surface / alternating rows
+ELEVATED = "#172032"    # elevated surface (buttons, menus)
+BORDER = "#243044"      # crisp dark slate borders
+BORDER_STRONG = "#2B3648"  # stronger borders
+TEXT = "#FFFFFF"        # pure crisp white primary text
+TEXT_SECONDARY = "#E2E8F0"  # secondary text: bright silver
 TEXT_MUTED = "#94A3B8"  # muted labels
 TEXT_DISABLED = "#64748B"  # disabled text
-ACCENT = "#3B82F6"  # primary accent / active navigation
-ACCENT_HOVER = "#2563EB"  # accent hover
-ACCENT_PRESSED = "#1D4ED8"  # accent pressed / selected row
-ACCENT_SOFT = "#172554"  # soft blue surface
-OK = "#10B981"  # success / healthy / active
-WARN = "#F59E0B"  # warning / medium
-HIGH = "#FB923C"  # high severity
-CRITICAL = "#EF4444"  # critical / error
-INFO = "#38BDF8"  # informational
-ROW_HOVER = "#1B2A44"  # subtle blue-tinted row hover
-ROW_LINE = "#243247"  # subtle horizontal row separation
+ACCENT = "#EF4444"      # primary accent: vivid defense red
+ACCENT_HOVER = "#F87171"  # accent hover
+ACCENT_PRESSED = "#DC2626"  # accent pressed
+ACCENT_SOFT = "rgba(239, 68, 68, 0.16)"  # soft crimson glow
+OK = "#10B981"          # success / healthy / active: emerald green
+WARN = "#F59E0B"        # warning / medium: amber
+HIGH = "#FB923C"        # high severity: orange
+CRITICAL = "#EF4444"    # critical / error: crimson red
+INFO = "#E2E8F0"        # informational: clean silver white
+ROW_HOVER = "#121926"   # subtle slate row hover (no blue)
+ROW_LINE = "#161E2D"    # subtle horizontal row separation
 
 #: Object names that receive a dynamic ``state`` property. ID-scoped selectors
 #: are required because a bare ``QLabel[state=...]`` is out-specified by ``#Card``
@@ -107,12 +107,13 @@ QToolTip {{
     color: {TEXT_MUTED};
 }}
 #Sidebar::item:hover {{
-    background-color: {SURFACE_ALT};
-    color: {TEXT_SECONDARY};
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #FFFFFF;
+    border-left: 3px solid rgba(239, 68, 68, 0.5);
 }}
 #Sidebar::item:selected {{
     background-color: {ACCENT_SOFT};
-    color: {TEXT};
+    color: #FFFFFF;
     font-weight: 700;
     border-left: 3px solid {ACCENT};
 }}

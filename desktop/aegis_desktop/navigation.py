@@ -41,17 +41,17 @@ NAV_ITEMS: tuple[NavItem, ...] = (
 # Each nav key maps to (Unicode glyph, hex accent colour).
 # Colors are chosen so every section has a distinct visual identity.
 _ICON_MAP: dict[str, tuple[str, str]] = {
-    "dashboard":  ("◈", "#3B82F6"),   # blue    – SOC HQ overview
-    "assets":     ("⬡", "#10B981"),   # emerald – hosts / devices
-    "processes":  ("≡", "#8B5CF6"),   # violet  – running processes
-    "network":    ("◎", "#06B6D4"),   # cyan    – network flows
-    "files":      ("▤", "#F59E0B"),   # amber   – file integrity
-    "events":     ("◆", "#6366F1"),   # indigo  – raw events log
-    "detections": ("⚠", "#F97316"),   # orange  – anomaly findings
-    "incidents":  ("⊗", "#EF4444"),   # red     – active incidents
-    "response":   ("⚡", "#10B981"),   # green   – IPS response center
-    "risk":       ("▲", "#EC4899"),   # pink    – risk scoring
-    "settings":   ("⚙", "#94A3B8"),   # muted   – configuration
+    "dashboard":  ("◈", "#EF4444"),   # crimson - SOC HQ overview
+    "assets":     ("⬡", "#10B981"),   # emerald - hosts / devices
+    "processes":  ("≡", "#8B5CF6"),   # violet  - running processes
+    "network":    ("◎", "#10B981"),   # emerald - network flows
+    "files":      ("▤", "#F59E0B"),   # amber   - file integrity
+    "events":     ("◆", "#E2E8F0"),   # silver  - raw events log
+    "detections": ("⚠", "#F97316"),   # orange  - anomaly findings
+    "incidents":  ("⊗", "#EF4444"),   # red     - active incidents
+    "response":   ("⚡", "#10B981"),   # green   - IPS response center
+    "risk":       ("▲", "#EC4899"),   # pink    - risk scoring
+    "settings":   ("⚙", "#94A3B8"),   # muted   - configuration
 }
 
 _ICON_SIZE = 22   # px — icon pixmap square
