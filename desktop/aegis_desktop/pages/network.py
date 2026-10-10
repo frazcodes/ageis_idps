@@ -17,6 +17,7 @@ page honestly shows "No network activity observed".
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 
 from PySide6.QtCore import (
@@ -25,6 +26,7 @@ from PySide6.QtCore import (
     QPersistentModelIndex,
     QSortFilterProxyModel,
     Qt,
+    QTimer,
 )
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -857,7 +859,7 @@ class NetworkPage(BasePage):
 
     PAGE_KEY  = "network"
     ICON       = "◎"
-    ICON_COLOR = "#06B6D4"
+    ICON_COLOR = "#10B981"
     TITLE     = "Network"
     SUBTITLE = "Read-only network monitoring: capture status, endpoints, flows and events."
     EMPTY_STATE = ""
@@ -878,6 +880,8 @@ class NetworkPage(BasePage):
         self._snapshot: PortSnapshotView | None = None
         self._monitoring: NetworkMonitoringView | None = None
         self._error_active = False
+        self._arp_sync_busy = False
+        self._arp_scan_busy = False
 
         super().__init__(parent)
         # Deliberately no automatic collection or capture on open.
@@ -1000,7 +1004,26 @@ class NetworkPage(BasePage):
 
     def _on_tab_changed(self, index: int) -> None:
         if index == 4:
-            self.refresh_arp(live_sync=True)
+            self.refresh_arp(live_sync=False)
+            self._start_async_arp_sync()
+
+    def _start_async_arp_sync(self) -> None:
+        """Run ARP liveness sync in background thread to never stall GUI event loop."""
+        if self._arp_sync_busy or self._arp_scan_busy:
+            return
+        self._arp_sync_busy = True
+
+        def _worker() -> None:
+            try:
+                self._arp_service.sync_live_endpoints()
+            finally:
+                QTimer.singleShot(0, self._on_async_arp_sync_done)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_async_arp_sync_done(self) -> None:
+        self._arp_sync_busy = False
+        self.refresh_arp(live_sync=False)
 
     def _on_refresh_clicked(self) -> None:
         self.refresh()
@@ -1036,9 +1059,10 @@ class NetworkPage(BasePage):
 
         self._monitoring = view
         self._apply_monitoring(view)
-        # Real-time ARP radar sync when viewing the ARP Radar tab
+        # Real-time ARP radar sync when viewing the ARP Radar tab (non-blocking)
         if self._tabs.currentIndex() == 4:
-            self.refresh_arp(live_sync=True)
+            self.refresh_arp(live_sync=False)
+            self._start_async_arp_sync()
         return view
 
     def _apply(self, view: PortSnapshotView) -> None:
@@ -1266,9 +1290,23 @@ class NetworkPage(BasePage):
         return container
 
     def scan_arp_subnet(self) -> None:
-        """Trigger an ARP scan of the local subnet and refresh the table."""
-        self._arp_service.scan_subnet()
-        self.refresh_arp()
+        """Trigger an ARP scan of the local subnet asynchronously without blocking UI."""
+        if self._arp_scan_busy:
+            return
+        self._arp_scan_busy = True
+        self._arp_status_lbl.setText("Subnet: scanning endpoints...")
+
+        def _worker() -> None:
+            try:
+                self._arp_service.scan_subnet()
+            finally:
+                QTimer.singleShot(0, self._on_async_arp_scan_done)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_async_arp_scan_done(self) -> None:
+        self._arp_scan_busy = False
+        self.refresh_arp(live_sync=False)
 
     def refresh_arp(self, *, live_sync: bool = False) -> None:
         """Update the displayed ARP Radar devices and alerts."""

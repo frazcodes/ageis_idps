@@ -184,18 +184,18 @@ class ArpRadarService:
         def _check_endpoint(ip: str) -> tuple[str, bool]:
             with contextlib.suppress(Exception):
                 res = subprocess.run(  # noqa: S603
-                    ["ping", "-n", "1", "-w", "150", ip],  # noqa: S607
+                    ["ping", "-n", "1", "-w", "100", ip],  # noqa: S607
                     check=False,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    timeout=0.3,
+                    timeout=0.25,
                 )
                 return ip, (res.returncode == 0)
             return ip, False
 
         try:
             with concurrent.futures.ThreadPoolExecutor(
-                max_workers=min(16, len(endpoints))
+                max_workers=min(8, len(endpoints))
             ) as executor:
                 results = list(executor.map(_check_endpoint, endpoints))
                 for ip, alive in results:
@@ -228,15 +228,15 @@ class ArpRadarService:
         def _ping_host(ip: str) -> None:
             with contextlib.suppress(Exception):
                 subprocess.run(  # noqa: S603
-                    ["ping", "-n", "1", "-w", "150", ip],  # noqa: S607
+                    ["ping", "-n", "1", "-w", "100", ip],  # noqa: S607
                     check=False,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    timeout=0.4,
+                    timeout=0.25,
                 )
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=64) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
                 list(executor.map(_ping_host, ips))
         except Exception as exc:
             logger.debug("Subnet ping sweep encountered error: %s", exc)

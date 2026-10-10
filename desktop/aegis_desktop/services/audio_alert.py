@@ -12,6 +12,7 @@ import logging
 import sys
 import threading
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 
@@ -33,12 +34,12 @@ class _QtAudioBridge(QObject):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._player: object | None = None
-        self._output: object | None = None
+        self._player: Any = None
+        self._output: Any = None
         self.request_play.connect(self._on_play)
         self.request_stop.connect(self._on_stop)
 
-    def _ensure_player(self) -> object:
+    def _ensure_player(self) -> Any:
         if self._player is None:
             from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
