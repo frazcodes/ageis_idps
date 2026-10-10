@@ -23,6 +23,7 @@ from scapy.layers.inet6 import IPv6
 from scapy.packet import Packet
 
 from aegis_network_sensor.models import PacketRecord, format_ip_endpoint
+from aegis_network_sensor.tls_parser import extract_tls_sni
 from aegis_shared.enums import AddressFamily, NetworkDirection, TransportProtocol
 from aegis_shared.logging import get_logger
 
@@ -78,15 +79,22 @@ def _packet_timestamp(packet: Any) -> datetime:
     return datetime.now(UTC)
 
 
+def _safe_port(raw: Any) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _transport(
     packet: Packet, ip_version: AddressFamily
 ) -> tuple[TransportProtocol, bool, int | None, int | None]:
     if packet.haslayer(TCP):
         tcp = packet[TCP]
-        return TransportProtocol.TCP, True, int(tcp.sport), int(tcp.dport)
+        return TransportProtocol.TCP, True, _safe_port(tcp.sport), _safe_port(tcp.dport)
     if packet.haslayer(UDP):
         udp = packet[UDP]
-        return TransportProtocol.UDP, True, int(udp.sport), int(udp.dport)
+        return TransportProtocol.UDP, True, _safe_port(udp.sport), _safe_port(udp.dport)
     if ip_version is AddressFamily.IPV4 and packet.haslayer(ICMP):
         return TransportProtocol.ICMP, False, None, None
     if ip_version is AddressFamily.IPV6:
@@ -145,6 +153,18 @@ def _normalize_packet(
     except Exception:
         packet_length = None
 
+    # Passive TLS SNI extraction (RFC 6066). Operates on single TCP packet payloads.
+    # TCP stream reassembly is not implemented in this step; fragmented ClientHello
+    # messages split across multiple TCP segments evaluate safely to None.
+    sni: str | None = None
+    if protocol is TransportProtocol.TCP and packet.haslayer(TCP):
+        try:
+            raw_payload = bytes(packet[TCP].payload)
+            if raw_payload:
+                sni = extract_tls_sni(raw_payload)
+        except Exception:
+            sni = None
+
     return PacketRecord(
         timestamp=timestamp or _packet_timestamp(packet),
         interface=interface,
@@ -165,6 +185,7 @@ def _normalize_packet(
             dst_ip=dst_ip,
             dst_port=dst_port,
         ),
+        sni=sni,
     )
 
 

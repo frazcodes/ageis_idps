@@ -15,6 +15,9 @@ populate the table.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 from PySide6.QtCore import (
     QAbstractTableModel,
@@ -81,6 +84,18 @@ _RISK_LEVEL_RANK = {
 }
 
 _NO_INDEX = QModelIndex()
+
+
+@dataclass(frozen=True)
+class _TimelineMilestone:
+    timestamp: datetime
+    stage_category: str
+    badge_color: str
+    title: str
+    severity: str
+    severity_color: str
+    detail: str
+
 
 
 class IncidentTableModel(QAbstractTableModel):
@@ -185,8 +200,10 @@ class IncidentTableModel(QAbstractTableModel):
 class IncidentsPage(BasePage):
     """Read-only table + detail view of correlated security incidents."""
 
-    PAGE_KEY = "incidents"
-    TITLE = "Incidents"
+    PAGE_KEY  = "incidents"
+    ICON       = "⊗"
+    ICON_COLOR = "#EF4444"
+    TITLE     = "Incidents"
     SUBTITLE = "Read-only inspection of correlated security activity."
     EMPTY_STATE = ""
 
@@ -199,6 +216,7 @@ class IncidentsPage(BasePage):
         self._provider: Callable[[], IncidentSnapshotView] = provider or collect_incident_view
         self._snapshot: IncidentSnapshotView | None = None
         self._error_active = False
+        self._current_milestones: list[_TimelineMilestone] = []
 
         super().__init__(parent)
         # Deliberately no automatic evaluation: opening the application must not
@@ -243,6 +261,7 @@ class IncidentsPage(BasePage):
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(False)
+        self._table.horizontalHeader().setSectionsMovable(True)
         for index, width in enumerate(_COLUMN_WIDTHS):
             self._table.setColumnWidth(index, width)
         self._table.sortByColumn(1, Qt.SortOrder.DescendingOrder)
@@ -366,6 +385,11 @@ class IncidentsPage(BasePage):
         self._correlation_card = self._build_correlation_card()
         self._correlation_card.setVisible(False)
         self._canvas_content_layout.addWidget(self._correlation_card)
+
+        # Chronological Attack Timeline & Forensic Storyline
+        self._timeline_card = self._build_timeline_card()
+        self._timeline_card.setVisible(False)
+        self._canvas_content_layout.addWidget(self._timeline_card)
 
         # Legacy detail sections (hidden, kept for test backward-compat)
         self._legacy_detail = self._build_legacy_detail()
@@ -560,6 +584,301 @@ class IncidentsPage(BasePage):
         layout.addLayout(meta)
 
         return card
+
+    def _build_timeline_card(self) -> QWidget:
+        """Build the Chronological Attack Timeline & Forensic Storyline card."""
+        card = QFrame()
+        card.setObjectName("Card")
+        card.setStyleSheet(
+            "QFrame#Card { border-left: 3px solid #bc8cff; "
+            "background-color: #161b22; border-radius: 4px; }"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+
+        header_row = QHBoxLayout()
+        header_row.setSpacing(10)
+
+        heading = QLabel("CHRONOLOGICAL ATTACK TIMELINE & FORENSIC STORYLINE")
+        heading.setObjectName("CardTitle")
+        heading.setStyleSheet(
+            "font-size: 11px; font-weight: 700; color: #bc8cff; "
+            "letter-spacing: 0.5px;"
+        )
+        header_row.addWidget(heading)
+        header_row.addStretch(1)
+
+        self._timeline_span_badge = QLabel("0 Milestones")
+        self._timeline_span_badge.setObjectName("FieldValue")
+        self._timeline_span_badge.setStyleSheet(
+            "background-color: #21262d; color: #bc8cff; border: 1px solid #30363d; "
+            "padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: 700;"
+        )
+        header_row.addWidget(self._timeline_span_badge)
+        layout.addLayout(header_row)
+
+        self._timeline_storyline_box = QFrame()
+        self._timeline_storyline_box.setStyleSheet(
+            "background-color: rgba(188, 140, 255, 0.08); "
+            "border: 1px solid rgba(188, 140, 255, 0.25); "
+            "border-radius: 4px; padding: 6px 10px;"
+        )
+        narrative_layout = QVBoxLayout(self._timeline_storyline_box)
+        narrative_layout.setContentsMargins(4, 2, 4, 2)
+        self._timeline_storyline_label = QLabel("No incident selected")
+        self._timeline_storyline_label.setWordWrap(True)
+        self._timeline_storyline_label.setStyleSheet(
+            "color: #e6edf3; font-size: 11px; line-height: 1.4;"
+        )
+        narrative_layout.addWidget(self._timeline_storyline_label)
+        layout.addWidget(self._timeline_storyline_box)
+
+        self._timeline_stages_container = QWidget()
+        self._timeline_stages_layout = QVBoxLayout(self._timeline_stages_container)
+        self._timeline_stages_layout.setContentsMargins(0, 4, 0, 4)
+        self._timeline_stages_layout.setSpacing(6)
+        layout.addWidget(self._timeline_stages_container)
+
+        return card
+
+    def _clear_timeline_stages(self) -> None:
+        """Clear all dynamically created stage items from the timeline layout."""
+        while self._timeline_stages_layout.count():
+            item = self._timeline_stages_layout.takeAt(0)
+            widget = item.widget() if item is not None else None
+            if widget is not None:
+                widget.setParent(None)
+        self._current_milestones: list[_TimelineMilestone] = []
+
+    def _populate_attack_timeline(self, incident: object) -> None:
+        """Construct and render chronological forensic milestones with lateral speed deltas."""
+        self._clear_timeline_stages()
+
+        incident_id = getattr(incident, "incident_id", "INC")
+        host_id = getattr(incident, "host_id", "host")
+        created_at = getattr(incident, "created_at", None)
+        if not isinstance(created_at, datetime):
+            created_at = datetime.now(UTC)
+        updated_at = getattr(incident, "updated_at", None)
+        if not isinstance(updated_at, datetime):
+            updated_at = created_at
+
+        milestones: list[_TimelineMilestone] = []
+
+        # 1. Findings
+        finding_ids = set(getattr(incident, "finding_ids", ()))
+        findings = self._snapshot.findings if self._snapshot is not None else ()
+        for f in findings:
+            if f.finding_id in finding_ids:
+                ts = f.timestamp or created_at
+                rid = f.rule_id.upper()
+                sev = f.severity.upper()
+                sev_color = {
+                    "CRITICAL": "#ff4444",
+                    "HIGH": "#f85149",
+                    "MEDIUM": "#d29922",
+                    "LOW": "#00ff41",
+                    "INFORMATIONAL": "#58a6ff",
+                }.get(sev, "#58a6ff")
+
+                if any(k in rid for k in ("SCAN", "PORT", "DISCOVERY", "RECON")):
+                    category = "RECONNAISSANCE"
+                    cat_color = "#388bfd"
+                elif any(k in rid for k in ("AUTH", "LOGIN", "ACCESS", "BRUTE", "CRED")):
+                    category = "INITIAL ACCESS"
+                    cat_color = "#d29922"
+                elif any(k in rid for k in ("EXEC", "SHELL", "PROC", "POWERSHELL", "CMD")):
+                    category = "EXECUTION"
+                    cat_color = "#f85149"
+                elif any(k in rid for k in ("FIM", "FILE", "PERSIST", "REGISTRY")):
+                    category = "PERSISTENCE"
+                    cat_color = "#e3b341"
+                elif any(k in rid for k in ("NET", "BEACON", "DNS", "HTTP", "C2", "EXFIL")):
+                    category = "COMMAND & CONTROL"
+                    cat_color = "#db61a2"
+                else:
+                    category = "DETECTION"
+                    cat_color = "#58a6ff"
+
+                evidence_str = ""
+                if isinstance(f.evidence, dict) and f.evidence:
+                    evidence_str = " | ".join(
+                        f"{k}: {v}" for k, v in list(f.evidence.items())[:3]
+                    )
+
+                milestones.append(
+                    _TimelineMilestone(
+                        timestamp=ts,
+                        stage_category=category,
+                        badge_color=cat_color,
+                        title=f"{f.rule_id}: {f.title}",
+                        severity=sev,
+                        severity_color=sev_color,
+                        detail=evidence_str or f"Rule match on {f.host_id or host_id}",
+                    )
+                )
+
+        # 2. Events (if explicitly provided and not redundant with findings)
+        event_ids = set(getattr(incident, "event_ids", ()))
+        events = self._snapshot.events if self._snapshot is not None else ()
+        for ev in events:
+            if ev.event_id in event_ids:
+                ts = getattr(ev, "timestamp", None) or created_at
+                milestones.append(
+                    _TimelineMilestone(
+                        timestamp=ts,
+                        stage_category="TELEMETRY",
+                        badge_color="#8b949e",
+                        title=f"Telemetry: {ev.event_type} ({ev.category})",
+                        severity="INFO",
+                        severity_color="#58a6ff",
+                        detail=f"Event ID: {ev.event_id}",
+                    )
+                )
+
+        # 3. ML Anomalies
+        anomalies = self._snapshot.anomalies if self._snapshot is not None else ()
+        for anom in anomalies:
+            milestones.append(
+                _TimelineMilestone(
+                    timestamp=updated_at,
+                    stage_category="ML ANOMALY",
+                    badge_color="#bc8cff",
+                    title=f"Unsupervised ML Signal: {anom.source} (Score: {anom.score:.2f})",
+                    severity="HIGH" if anom.score >= 0.75 else "MEDIUM",
+                    severity_color="#f85149" if anom.score >= 0.75 else "#d29922",
+                    detail=(
+                        f"Model v{anom.model_version} • "
+                        f"{anom.reason or 'Behavioral outlier detected'}"
+                    ),
+                )
+            )
+
+        # 4. Correlation & Escalation Milestone
+        correlation_reason = getattr(incident, "correlation_reason", "")
+        risk_score = getattr(incident, "risk_score", 0)
+        risk_level = getattr(incident, "risk_level", None)
+        level_raw = getattr(risk_level, "value", risk_level) or "MEDIUM"
+        level_str = str(level_raw).upper()
+        level_color = {
+            "CRITICAL": "#ff4444",
+            "HIGH": "#f85149",
+            "MEDIUM": "#d29922",
+            "LOW": "#00ff41",
+            "INFORMATIONAL": "#58a6ff",
+        }.get(level_str, "#d29922")
+
+        milestones.append(
+            _TimelineMilestone(
+                timestamp=updated_at,
+                stage_category="CORRELATION",
+                badge_color="#56d364",
+                title=f"Incident Correlated: {incident_id} (Risk {risk_score})",
+                severity=level_str,
+                severity_color=level_color,
+                detail=correlation_reason or f"Incident aggregated for host {host_id}",
+            )
+        )
+
+        milestones.sort(key=lambda m: m.timestamp)
+
+        t0 = milestones[0].timestamp
+        t_end = milestones[-1].timestamp
+        total_seconds = max(0.0, (t_end - t0).total_seconds())
+
+        self._timeline_span_badge.setText(
+            f"{len(milestones)} Milestones • {total_seconds:.2f}s Duration"
+            if total_seconds > 0
+            else f"{len(milestones)} Milestones"
+        )
+
+        categories = [m.stage_category for m in milestones]
+        story_steps = list(dict.fromkeys(categories))
+        story_flow = " → ".join(story_steps)
+        self._timeline_storyline_label.setText(
+            f"Forensic Chain ({host_id}): {story_flow}. "
+            f"Observed across {len(milestones)} correlated points within {total_seconds:.2f}s."
+        )
+
+        for idx, m in enumerate(milestones):
+            if idx > 0:
+                connector = QFrame()
+                connector.setFixedSize(2, 8)
+                connector.setStyleSheet("background-color: #30363d; margin-left: 20px;")
+                self._timeline_stages_layout.addWidget(connector)
+
+            stage_frame = QFrame()
+            stage_frame.setObjectName("TimelineStage")
+            stage_frame.setStyleSheet(
+                f"QFrame#TimelineStage {{ "
+                f"background-color: #0d1117; "
+                f"border: 1px solid #30363d; "
+                f"border-left: 3px solid {m.badge_color}; "
+                f"border-radius: 4px; padding: 6px 10px; }}"
+            )
+            s_layout = QVBoxLayout(stage_frame)
+            s_layout.setContentsMargins(4, 2, 4, 2)
+            s_layout.setSpacing(3)
+
+            top_row = QHBoxLayout()
+            top_row.setSpacing(8)
+
+            step_lbl = QLabel(f"#{idx + 1}")
+            step_lbl.setStyleSheet(
+                "color: #8b949e; font-weight: 700; font-size: 10px; min-width: 18px;"
+            )
+            top_row.addWidget(step_lbl)
+
+            delta_val = max(0.0, (m.timestamp - t0).total_seconds())
+            delta_pill = QLabel(f"+{delta_val:.2f}s")
+            delta_pill.setStyleSheet(
+                "background-color: #21262d; color: #58a6ff; font-weight: 700; "
+                "font-size: 9px; padding: 2px 6px; border-radius: 8px; "
+                "border: 1px solid #30363d;"
+                if idx > 0
+                else "background-color: #1f6feb; color: #ffffff; font-weight: 700; "
+                     "font-size: 9px; padding: 2px 6px; border-radius: 8px;"
+            )
+            top_row.addWidget(delta_pill)
+
+            cat_badge = QLabel(m.stage_category)
+            cat_badge.setStyleSheet(
+                f"background-color: rgba(255, 255, 255, 0.05); color: {m.badge_color}; "
+                f"font-weight: 700; font-size: 9px; padding: 2px 6px; border-radius: 3px; "
+                f"border: 1px solid {m.badge_color};"
+            )
+            top_row.addWidget(cat_badge)
+
+            sev_badge = QLabel(m.severity)
+            sev_badge.setStyleSheet(
+                f"background-color: {m.severity_color}; color: #ffffff; "
+                f"font-weight: 800; font-size: 9px; padding: 2px 5px; border-radius: 3px;"
+            )
+            top_row.addWidget(sev_badge)
+
+            top_row.addStretch(1)
+
+            ts_lbl = QLabel(format_timestamp(m.timestamp))
+            ts_lbl.setStyleSheet("color: #8b949e; font-size: 10px;")
+            top_row.addWidget(ts_lbl)
+
+            s_layout.addLayout(top_row)
+
+            title_lbl = QLabel(m.title)
+            title_lbl.setWordWrap(True)
+            title_lbl.setStyleSheet("color: #e6edf3; font-weight: 600; font-size: 11px;")
+            s_layout.addWidget(title_lbl)
+
+            if m.detail:
+                detail_lbl = QLabel(m.detail)
+                detail_lbl.setWordWrap(True)
+                detail_lbl.setStyleSheet("color: #8b949e; font-size: 10px;")
+                s_layout.addWidget(detail_lbl)
+
+            self._timeline_stages_layout.addWidget(stage_frame)
+
+        self._current_milestones = milestones
 
     def _build_legacy_detail(self) -> QWidget:
         """Build the legacy detail panel (hidden, for test backward-compat)."""
@@ -760,10 +1079,7 @@ class IncidentsPage(BasePage):
 
         self._canvas_incident_id.setText(getattr(incident, "incident_id", ""))
         status_val = getattr(incident, "status", "")
-        if hasattr(status_val, "value"):
-            self._canvas_status.setText(status_val.value)
-        else:
-            self._canvas_status.setText(str(status_val))
+        self._canvas_status.setText(str(getattr(status_val, "value", status_val)))
         self._canvas_correlation_reason.setText(getattr(incident, "correlation_reason", ""))
 
         # Fetch asset context for this host
@@ -772,16 +1088,26 @@ class IncidentsPage(BasePage):
         # Fetch and populate host/network correlation evidence
         self._populate_correlation_evidence(incident)
 
+        # Chronological attack timeline & forensic storyline
+        self._populate_attack_timeline(incident)
+
         # Populate action bar
         self._populate_action_bar(incident)
 
         # Show canvas components
         self._asset_card.setVisible(True)
         self._correlation_card.setVisible(True)
+        self._timeline_card.setVisible(True)
         self._action_bar.setVisible(True)
 
         # Also populate legacy detail for test backward-compat
         self._render_incident(incident)
+
+    @staticmethod
+    def _set_asset_field_text(field_widget: QWidget, text: str) -> None:
+        lbl = field_widget.findChild(QLabel, "FieldValue")
+        if lbl is not None:
+            lbl.setText(text)
 
     def _populate_asset_context(self, host_id: str) -> None:
         """Fetch and display asset context for the host."""
@@ -792,23 +1118,24 @@ class IncidentsPage(BasePage):
         try:
             asset_view = collect_asset_view()
             asset_row = None
-            for asset in asset_view.assets:
-                if asset.host_id == host_id:
-                    asset_row = asset
+            for row in asset_view.rows:
+                if row.host_id == host_id:
+                    asset_row = row
                     break
+            if asset_row is None and asset_view.rows:
+                asset_row = asset_view.rows[0]
 
             if asset_row is not None:
                 hn = asset_row.hostname or MISSING
-                os_val = asset_row.operating_system or MISSING
+                os_val = asset_row.os or MISSING
                 ip_val = asset_row.ip_addresses[0] if asset_row.ip_addresses else MISSING
                 plat = asset_row.platform or MISSING
-                self._asset_hostname.findChild(QLabel, "FieldValue").setText(hn)
-                self._asset_os.findChild(QLabel, "FieldValue").setText(os_val)
-                self._asset_ip.findChild(QLabel, "FieldValue").setText(ip_val)
-                self._asset_platform.findChild(QLabel, "FieldValue").setText(plat)
-                self._asset_peers.findChild(QLabel, "FieldValue").setText(str(asset_row.peers))
-                svc_val = str(asset_row.services)
-                self._asset_services.findChild(QLabel, "FieldValue").setText(svc_val)
+                self._set_asset_field_text(self._asset_hostname, hn)
+                self._set_asset_field_text(self._asset_os, os_val)
+                self._set_asset_field_text(self._asset_ip, ip_val)
+                self._set_asset_field_text(self._asset_platform, plat)
+                self._set_asset_field_text(self._asset_peers, str(asset_row.peer_count))
+                self._set_asset_field_text(self._asset_services, str(asset_row.service_count))
                 self._asset_card.setVisible(True)
             else:
                 self._asset_card.setVisible(False)
@@ -910,7 +1237,11 @@ class IncidentsPage(BasePage):
         self._canvas_header.setVisible(False)
         self._asset_card.setVisible(False)
         self._correlation_card.setVisible(False)
+        self._timeline_card.setVisible(False)
         self._action_bar.setVisible(False)
+        self._clear_timeline_stages()
+        self._timeline_span_badge.setText("0 Milestones")
+        self._timeline_storyline_label.setText("No incident selected")
 
         # Reset header fields
         self._canvas_severity_badge.setText("")
@@ -921,7 +1252,7 @@ class IncidentsPage(BasePage):
         # Reset asset fields
         for field in (self._asset_hostname, self._asset_os, self._asset_ip,
                       self._asset_platform, self._asset_peers, self._asset_services):
-            field.findChild(QLabel, "FieldValue").setText("")
+            self._set_asset_field_text(field, "")
 
         # Reset correlation fields
         self._corr_host_findings.setText("No host findings")
@@ -938,7 +1269,7 @@ class IncidentsPage(BasePage):
         # Clear legacy detail
         self._clear_detail()
 
-    def _render_incident(self, incident: object) -> None:
+    def _render_incident(self, incident: Any) -> None:
         """Render the incident detail sections."""
         # Section 1: Incident Summary
         frame, form = self._build_section("INCIDENT SUMMARY")
@@ -1068,9 +1399,16 @@ class IncidentsPage(BasePage):
         else:
             self._add_field(form, "Status", "No response action available for this incident.")
 
+        # Section 10: Attack Timeline & Forensic Storyline
+        frame, form = self._build_section("ATTACK TIMELINE & FORENSIC STORYLINE")
+        self._investigation_layout.addWidget(frame)
+        stage_count = len(getattr(self, "_current_milestones", []))
+        self._add_field(form, "Timeline Stages", f"{stage_count} sequential milestones")
+        self._add_field(form, "Forensic Storyline", self._timeline_storyline_label.text())
+
         self._investigation_layout.addStretch(1)
 
-    def _correlation_for(self, incident: object) -> object | None:
+    def _correlation_for(self, incident: object) -> Any:
         """Return the published host/network correlation related to ``incident``."""
         if self._snapshot is None:
             return None
@@ -1123,7 +1461,7 @@ class IncidentsPage(BasePage):
 
     # -- Read-only accessors (also used by tests) --------------------------
 
-    def _response_view_for_incident(self, incident: object) -> object | None:
+    def _response_view_for_incident(self, incident: object) -> Any:
         """Evaluate response policy for an incident based on its first finding."""
         if self._snapshot is None:
             return None
@@ -1271,6 +1609,15 @@ class IncidentsPage(BasePage):
         """Return the field values currently shown in the detail panel."""
         _, values = self._collect_fields_from_layout()
         return tuple(values)
+
+    def timeline_stage_count(self) -> int:
+        """Number of milestones rendered in the attack timeline."""
+        return len(getattr(self, "_current_milestones", []))
+
+    def timeline_storyline_text(self) -> str:
+        """Text of the forensic storyline summary narrative."""
+        return self._timeline_storyline_label.text()
+
 
     def has_error(self) -> bool:
         """Whether the page is showing a safe error state."""

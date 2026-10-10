@@ -433,3 +433,39 @@ def test_risk_card_shows_no_data_when_empty(app: QApplication) -> None:
     assert page.risk_level_text() in ("\u2014", "")
     assert page.risk_count_text() in ("\u2014", "")
     assert page.risk_version_text() in ("\u2014", "")
+
+
+def test_mitre_kill_chain_widget_selection(app: QApplication) -> None:
+    from aegis_desktop.pages.graphs import MitreKillChainWidget
+
+    widget = MitreKillChainWidget()
+    assert widget.selected_stage() is None
+
+    received: list[str] = []
+    widget.tactic_selected.connect(received.append)
+
+    widget.select_stage("TA0001")
+    assert widget.selected_stage() == "TA0001"
+    assert received == ["TA0001"]
+
+    widget.clear_selection()
+    assert widget.selected_stage() is None
+    assert received == ["TA0001", ""]
+
+
+def test_dashboard_mitre_tactic_filtering(app: QApplication) -> None:
+    page = DashboardPage(provider=lambda: _snapshot())
+    assert page._selected_mitre_tactic is None
+
+    # Simulate selecting a tactic
+    page._on_mitre_tactic_selected("TA0001")
+    assert page._selected_mitre_tactic == "TA0001"
+    assert page._threat_feed_filter_badge is not None
+    assert not page._threat_feed_filter_badge.isHidden()
+    assert "TA0001" in page._threat_feed_filter_badge.text()
+
+    # Clear filter
+    page._clear_mitre_filter()
+    assert page._selected_mitre_tactic is None
+    assert page._threat_feed_filter_badge.isHidden()
+

@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aegis_desktop.services.monitoring import (
     MonitoringStatus,
@@ -145,6 +145,7 @@ class FlowRow:
     bytes: int
     duration_ms: int
     direction: str
+    sni: str | None = None
 
 
 @dataclass(frozen=True)
@@ -158,6 +159,7 @@ class NetworkEventRow:
     destination: str
     packets: int | None
     bytes: int | None
+    sni: str | None = None
 
 
 @dataclass(frozen=True)
@@ -183,20 +185,34 @@ def _format_endpoint(
 
 
 def _to_flow_row(flow: FlowRecord) -> FlowRow:
+    dst_endpoint = _format_endpoint(flow.dst_ip, flow.dst_port, flow.ip_version)
+    dst_display = f"{dst_endpoint} ({flow.sni})" if flow.sni else dst_endpoint
     return FlowRow(
         flow_id=flow.flow_id,
         protocol=flow.protocol.value,
         source=_format_endpoint(flow.src_ip, flow.src_port, flow.ip_version),
-        destination=_format_endpoint(flow.dst_ip, flow.dst_port, flow.ip_version),
+        destination=dst_display,
         packets=flow.packet_count,
         bytes=flow.byte_count,
         duration_ms=flow.duration_ms,
         direction=flow.direction.value,
+        sni=flow.sni,
     )
 
 
 def _to_event_row(event: SecurityEvent) -> NetworkEventRow:
     net = event.network
+    dst_endpoint = (
+        _format_endpoint(net.dst_ip, net.dst_port, net.ip_version)
+        if net is not None
+        else MISSING
+    )
+    domain = net.domain if net is not None else None
+    if domain and dst_endpoint != MISSING:
+        dst_display = f"{dst_endpoint} ({domain})"
+    else:
+        dst_display = dst_endpoint
+
     return NetworkEventRow(
         timestamp=event.timestamp,
         event_type=event.event_type.value,
@@ -206,13 +222,10 @@ def _to_event_row(event: SecurityEvent) -> NetworkEventRow:
             if net is not None
             else MISSING
         ),
-        destination=(
-            _format_endpoint(net.dst_ip, net.dst_port, net.ip_version)
-            if net is not None
-            else MISSING
-        ),
+        destination=dst_display,
         packets=net.packets_sent if net is not None else None,
         bytes=net.bytes_sent if net is not None else None,
+        sni=domain,
     )
 
 
@@ -249,7 +262,7 @@ def _stopped_status() -> MonitoringStatus:
 
 def collect_network_monitoring_view(
     *,
-    controller_provider: Callable[[], object] | None = None,
+    controller_provider: Callable[[], Any] | None = None,
     events_provider: Callable[[], Iterable[SecurityEvent]] | None = None,
 ) -> NetworkMonitoringView:
     """Read live network monitoring state from the running runtime (read-only).

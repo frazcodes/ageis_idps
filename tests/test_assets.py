@@ -8,6 +8,7 @@ directly or replayed through the existing sensor path; only metadata is used.
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -281,15 +282,20 @@ def test_runtime_updates_assets_from_real_telemetry() -> None:
     from scapy.layers.inet import IP, TCP
 
     from aegis_agent.monitors.port.models import PortChanges, PortRecord, PortSnapshot
+    from aegis_agent.monitors.port.monitor import PortMonitor as BasePortMonitor
     from aegis_network_sensor.config import SensorSettings
+    from aegis_network_sensor.models import CaptureSummary
     from aegis_network_sensor.sensor import NetworkSensor
     from aegis_runtime import AegisRuntime
     from aegis_shared.enums import AddressFamily
     from tests.test_runtime import _agent
 
-    class PortMonitor:
-        def start(self) -> None:
-            return None
+    class PortMonitor(BasePortMonitor):
+        def __init__(self) -> None:
+            pass
+
+        def start(self) -> PortSnapshot:
+            return self.snapshot()
 
         def poll(self) -> PortChanges:
             return PortChanges()
@@ -317,7 +323,7 @@ def test_runtime_updates_assets_from_real_telemetry() -> None:
         def __init__(self) -> None:
             super().__init__(SensorSettings(capture_enabled=False, local_addresses=["10.0.0.5"]))
 
-        def capture(self, *, count: int | None = None) -> object:
+        def capture(self, *, count: int | None = None) -> CaptureSummary:
             return self.process_packets(
                 [IP(src="10.0.0.5", dst="10.0.0.9") / TCP(sport=50000, dport=443)]
             )
@@ -437,8 +443,130 @@ def test_investigation_exposes_asset_context() -> None:
     assert view.asset_context.new_peers == 1
 
 
+# --- 15. Asset exposure grade calculation and UI ---------------------------
+
+
+def test_asset_exposure_grade_calculation() -> None:
+    from aegis_desktop.services.assets import PeerView, ServiceView, calculate_exposure_grade
+
+    # Low exposure (hardened endpoint)
+    clean_services = (
+        ServiceView(
+            port=443,
+            protocol="tcp",
+            address="0.0.0.0",
+            status="LISTEN",
+            pid=100,
+            process_name="nginx",
+            first_seen=_TS,
+            last_seen=_TS,
+            known=True,
+        ),
+    )
+    clean_peers = (
+        PeerView(
+            remote_ip="10.0.0.1",
+            remote_port=443,
+            protocol="tcp",
+            direction="outbound",
+            first_seen=_TS,
+            last_seen=_TS,
+            flow_count=1,
+            packet_count=10,
+            byte_count=1000,
+            known=True,
+        ),
+    )
+    grade, score = calculate_exposure_grade(clean_services, clean_peers)
+    assert grade == "A"
+    assert score < 20
+
+    # Critical exposure (SMB port 445 exposed + multiple unknown peers)
+    risky_services = (
+        ServiceView(
+            port=445,
+            protocol="tcp",
+            address="0.0.0.0",
+            status="LISTEN",
+            pid=4,
+            process_name="System",
+            first_seen=_TS,
+            last_seen=_TS,
+            known=False,
+        ),
+        ServiceView(
+            port=3389,
+            protocol="tcp",
+            address="0.0.0.0",
+            status="LISTEN",
+            pid=1200,
+            process_name="termService",
+            first_seen=_TS,
+            last_seen=_TS,
+            known=False,
+        ),
+    )
+    risky_peers = tuple(
+        PeerView(
+            remote_ip=f"192.168.1.{i}",
+            remote_port=4444,
+            protocol="tcp",
+            direction="inbound",
+            first_seen=_TS,
+            last_seen=_TS,
+            flow_count=5,
+            packet_count=50,
+            byte_count=5000,
+            known=False,
+        )
+        for i in range(12)
+    )
+    grade_risk, score_risk = calculate_exposure_grade(risky_services, risky_peers)
+    assert grade_risk in ("D", "F")
+    assert score_risk >= 60
+
+
+def test_assets_page_exposure_column_and_detail() -> None:
+    from aegis_desktop.pages.assets import AssetsPage
+    from aegis_desktop.services.assets import AssetPosture, AssetRow, AssetSnapshotView
+
+    row = AssetRow(
+        asset_id="asset-101",
+        host_id="host-101",
+        hostname="soc-collector",
+        ip_addresses=("10.10.10.5",),
+        status="active",
+        service_count=2,
+        peer_count=1,
+        first_seen=_TS,
+        last_seen=_TS,
+        exposure_grade="A",
+        exposure_score=10,
+    )
+    view = AssetSnapshotView(
+        available=True,
+        error=None,
+        collected_at=_TS,
+        posture=AssetPosture(True, 1, 1, 1, 0),
+        rows=(row,),
+    )
+
+    page = AssetsPage(provider=lambda: view)
+    page.refresh()
+    assert "Exposure" in page.column_headers()
+    assert page.row_count() == 1
+
+    page.show_detail_for(row)
+    keys = page.detail_keys()
+    values = page.detail_values()
+    assert "Exposure Grade" in keys
+    assert any("GRADE A" in val for val in values)
+    assert "Exposure Recommendation" in keys or "Hardening Advice" in keys
+
+
+
 @pytest.fixture(autouse=True)
-def _clean() -> object:
+def _clean() -> Generator[None, None, None]:
     from aegis_shared.assets import clear_active_asset_snapshot
 
     clear_active_pipeline()

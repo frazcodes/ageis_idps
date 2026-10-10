@@ -77,9 +77,24 @@ class FileSnapshotView:
         return len(self.rows)
 
 
+def _resolve_agent_settings(settings: AgentSettings | None) -> AgentSettings:
+    if settings is not None:
+        return settings
+    from aegis_desktop.services.monitoring import get_active_monitoring_controller
+
+    ctrl = get_active_monitoring_controller()
+    runtime = getattr(ctrl, "runtime", None) if ctrl is not None else None
+    runtime_agent = (
+        getattr(runtime, "_agent", None)
+        if ctrl is not None and getattr(ctrl, "is_running", False) and runtime is not None
+        else None
+    )
+    return runtime_agent if isinstance(runtime_agent, AgentSettings) else get_agent_settings()
+
+
 def file_integrity_config(settings: AgentSettings | None = None) -> FileIntegrityConfig:
     """Return the current FIM posture from the existing agent configuration."""
-    resolved = settings or get_agent_settings()
+    resolved = _resolve_agent_settings(settings)
     return FileIntegrityConfig(
         enabled=resolved.enable_file_integrity,
         configured_paths=len(resolved.file_integrity_paths),
@@ -130,7 +145,7 @@ def collect_file_view(
         ``available`` is ``False`` with a ``notice`` and no filesystem access
         occurs. On failure, ``error`` carries a safe, non-sensitive message.
     """
-    resolved = settings or get_agent_settings()
+    resolved = _resolve_agent_settings(settings)
     config = file_integrity_config(resolved)
 
     if not config.enabled or config.configured_paths == 0:

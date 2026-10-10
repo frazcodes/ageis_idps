@@ -490,3 +490,64 @@ def test_end_to_end_workflow() -> None:
     assert len(all_reqs) == 1
     assert all_reqs[0].status == "approved"
     assert all_reqs[0].approval_status == "approved"
+
+
+# --- 21. Fast-track containment workflow -----------------------------------
+
+
+def test_fast_track_containment() -> None:
+    from aegis_desktop.services.response_workflow import ResponseWorkflowManager
+
+    mgr = ResponseWorkflowManager()
+    view = mgr.create_request_from_incident(
+        incident_id="INC-99",
+        action_label="block_ip",
+        target_value="198.51.100.42",
+        target_kind="ip",
+        risk_level="critical",
+        risk_score=95,
+        engine=_enabled_engine(),
+    )
+    assert view is not None
+    assert view.status == "draft"
+
+    # Fast track to approved
+    approved_view = mgr.fast_track_containment(view.request_id)
+    assert approved_view is not None
+    assert approved_view.status == "approved"
+    assert approved_view.dry_run_status == "would_apply"
+    assert mgr.approved_count() == 1
+
+
+def test_direct_contain_ip() -> None:
+    from aegis_desktop.services.response_workflow import ResponseWorkflowManager
+
+    mgr = ResponseWorkflowManager()
+    view = mgr.direct_contain_ip(
+        "203.0.113.88",
+        reason="Direct operator threat containment",
+        risk_level="critical",
+        risk_score=90,
+        engine=_enabled_engine(),
+    )
+    assert view is not None
+    assert view.status == "approved"
+    assert view.target == "203.0.113.88"
+    assert mgr.approved_count() == 1
+
+
+def test_response_center_direct_containment_toolbar() -> None:
+    pytest.importorskip("PySide6", reason="desktop extra not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from aegis_desktop.app import create_application
+    from aegis_desktop.pages.response_center import ResponseCenterPage
+
+    _app = create_application([])
+    assert _app is not None
+
+    page = ResponseCenterPage()
+    assert page._direct_contain_button is not None
+    assert "Containment" in page._direct_contain_button.text()
+
+

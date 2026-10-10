@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import (
     QAbstractTableModel,
@@ -33,6 +33,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -40,6 +41,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -231,6 +233,130 @@ class _ExecutionConfirmDialog(QDialog):
         layout.addWidget(buttons)
 
 
+class _DirectContainmentDialog(QDialog):
+    """Direct host/IP emergency containment modal dialog."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Emergency Threat Containment & Isolation")
+        self.setMinimumWidth(440)
+        self.setStyleSheet(
+            "QDialog { background-color: #0E1726; color: #F1F5F9; border: 1px solid #1E293B; }"
+            "QLabel { color: #CBD5E1; }"
+            "QLineEdit, QComboBox { background: #162032; border: 1px solid #334155; "
+            "border-radius: 5px; padding: 6px; color: #F8FAFC; }"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        title = QLabel("RAPID HOST / IP CONTAINMENT")
+        title.setStyleSheet(
+            "font-size: 14px; font-weight: 800; color: #EF4444; letter-spacing: 0.5px;"
+        )
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "Stage an emergency containment action to isolate an attacker IP "
+            "or malicious endpoint. The action runs policy checks and deterministic dry-run."
+        )
+        desc.setStyleSheet("font-size: 11px; color: #94A3B8;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self.action_combo = QComboBox()
+        self.action_combo.addItems([
+            "BLOCK_IP (Block Attacker IP)",
+            "HOST_ISOLATE (Isolate Host Endpoint)",
+        ])
+        form.addRow("Action:", self.action_combo)
+
+        self.target_input = QLineEdit()
+        self.target_input.setPlaceholderText("e.g. 192.168.1.150 or 10.0.0.99")
+        form.addRow("Target IP/Host:", self.target_input)
+
+        self.reason_input = QLineEdit()
+        self.reason_input.setText("Emergency Containment — Active Threat Detected")
+        form.addRow("Reason:", self.reason_input)
+
+        self.risk_combo = QComboBox()
+        self.risk_combo.addItems([
+            "CRITICAL (Score: 95)",
+            "HIGH (Score: 80)",
+            "MEDIUM (Score: 50)",
+        ])
+        form.addRow("Risk Assessment:", self.risk_combo)
+
+        layout.addLayout(form)
+
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(10)
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(
+            "QPushButton { background: transparent; color: #94A3B8; border: 1px solid #334155; "
+            "border-radius: 6px; padding: 6px 14px; }"
+            "QPushButton:hover { background: #1E293B; color: #F1F5F9; }"
+        )
+        cancel_btn.clicked.connect(self.reject)
+
+        self.stage_btn = QPushButton("Stage as Draft")
+        self.stage_btn.setStyleSheet(
+            "QPushButton { background: #1E293B; color: #38BDF8; border: 1px solid #0284C7; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 600; }"
+            "QPushButton:hover { background: #0369A1; color: #FFFFFF; }"
+        )
+        self.stage_btn.clicked.connect(lambda: self._finish(fast_track=False))
+
+        self.fast_track_btn = QPushButton("⚡ Fast-Track (Approve)")
+        self.fast_track_btn.setStyleSheet(
+            "QPushButton { background: #991B1B; color: #FFFFFF; border: 1px solid #EF4444; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 700; }"
+            "QPushButton:hover { background: #DC2626; }"
+        )
+        self.fast_track_btn.clicked.connect(lambda: self._finish(fast_track=True))
+
+        btn_box.addWidget(cancel_btn)
+        btn_box.addStretch(1)
+        btn_box.addWidget(self.stage_btn)
+        btn_box.addWidget(self.fast_track_btn)
+        layout.addLayout(btn_box)
+
+        self.fast_track: bool = False
+        self.target_value: str = ""
+        self.action_type: str = "block_ip"
+        self.reason_text: str = ""
+        self.risk_level: str = "critical"
+        self.risk_score: int = 95
+
+    def _finish(self, fast_track: bool) -> None:
+        target = self.target_input.text().strip()
+        if not target:
+            self.target_input.setStyleSheet(
+                "border: 1px solid #EF4444; background: #162032; padding: 6px; color: #FFF;"
+            )
+            return
+        self.fast_track = fast_track
+        self.target_value = target
+        act_txt = self.action_combo.currentText().lower()
+        self.action_type = "host_isolate" if "isolate" in act_txt else "block_ip"
+        self.reason_text = self.reason_input.text().strip() or "Emergency SOC Containment"
+        if "critical" in self.risk_combo.currentText().lower():
+            self.risk_level = "critical"
+            self.risk_score = 95
+        elif "high" in self.risk_combo.currentText().lower():
+            self.risk_level = "high"
+            self.risk_score = 80
+        else:
+            self.risk_level = "medium"
+            self.risk_score = 50
+        self.accept()
+
+
 class RequestTableModel(QAbstractTableModel):
     """Qt table model over a tuple of :class:`ResponseRequestView`."""
 
@@ -408,8 +534,10 @@ class AuditTableModel(QAbstractTableModel):
 class ResponseCenterPage(BasePage):
     """Read-only table + detail view of response-request workflows."""
 
-    PAGE_KEY = "response"
-    TITLE = "Response Center"
+    PAGE_KEY  = "response"
+    ICON       = "⚡"
+    ICON_COLOR = "#10B981"
+    TITLE     = "Response Center"
     SUBTITLE = "Response-request workflow: dry run, approval, controlled execution."
     EMPTY_STATE = ""
 
@@ -417,9 +545,11 @@ class ResponseCenterPage(BasePage):
         self,
         parent: QWidget | None = None,
         *,
-        manager_provider: Callable[..., object] | None = None,
+        manager_provider: Callable[..., Any] | None = None,
     ) -> None:
-        self._manager_provider = manager_provider or (lambda: get_workflow_manager())
+        self._manager_provider: Callable[..., Any] = manager_provider or (
+            lambda: get_workflow_manager()
+        )
         self._snapshot: tuple[ResponseRequestView, ...] = ()
         self._error_active = False
 
@@ -529,12 +659,23 @@ class ResponseCenterPage(BasePage):
         self._refresh_button.setObjectName("PrimaryButton")
         self._refresh_button.clicked.connect(self.refresh)
 
+        self._direct_contain_button = QPushButton("⚡ Direct Host/IP Containment")
+        self._direct_contain_button.setObjectName("WarningButton")
+        self._direct_contain_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._direct_contain_button.setStyleSheet(
+            "QPushButton { background: #991B1B; color: #FEE2E2; border: 1px solid #DC2626; "
+            "border-radius: 6px; padding: 6px 14px; font-weight: 700; font-size: 12px; } "
+            "QPushButton:hover { background: #DC2626; color: #FFFFFF; border-color: #EF4444; }"
+        )
+        self._direct_contain_button.clicked.connect(self._on_direct_containment)
+
         self._count_label = QLabel(_NO_DATA_TEXT)
         self._count_label.setObjectName("FieldValue")
         self._last_updated_label = QLabel("Last updated: —")
         self._last_updated_label.setObjectName("CardHint")
 
         toolbar.addWidget(self._refresh_button)
+        toolbar.addWidget(self._direct_contain_button)
         toolbar.addWidget(self._count_label)
         toolbar.addWidget(self._last_updated_label)
         toolbar.addStretch(1)
@@ -743,7 +884,7 @@ class ResponseCenterPage(BasePage):
                 states.append(_STAGE_ERROR)
             else:
                 states.append(_STAGE_ACTIVE)
-        return tuple(states)
+        return (states[0], states[1], states[2], states[3])
 
     @staticmethod
     def _stage_state_text(view: ResponseRequestView, index: int, state: str) -> str:
@@ -811,7 +952,7 @@ class ResponseCenterPage(BasePage):
     def _refresh_audit(self, request_id: str | None = None) -> None:
         """Refresh the audit history table, optionally filtered by request."""
         try:
-            history = get_audit_history()
+            history: Any = get_audit_history()
             if request_id:
                 records = history.records_for_request(request_id)
             else:
@@ -849,9 +990,9 @@ class ResponseCenterPage(BasePage):
     def _show_initial_state(self) -> None:
         self._snapshot = ()
         self._model.set_rows(())
-        self._count_label = getattr(self, "_count_label", None)
-        if self._count_label is not None:
-            self._count_label.setText(_NO_DATA_TEXT)
+        count_lbl = getattr(self, "_count_label", None)
+        if count_lbl is not None:
+            count_lbl.setText(_NO_DATA_TEXT)
         lbl = getattr(self, "_last_updated_label", None)
         if lbl is not None:
             lbl.setText("Last updated: —")
@@ -1048,6 +1189,18 @@ class ResponseCenterPage(BasePage):
         detail.setObjectName("CardHint")
         detail.setWordWrap(True)
         outer.addWidget(detail)
+
+        if view.status in ("draft", "dry_run_ready", "dry_run_completed"):
+            ft_btn = QPushButton("⚡ Fast-Track Playbook (Dry Run + Approve)")
+            ft_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            ft_btn.setStyleSheet(
+                "QPushButton { background: #1E293B; color: #F59E0B; border: 1px solid #D97706; "
+                "border-radius: 6px; padding: 6px 12px; font-weight: 700; font-size: 11px; } "
+                "QPushButton:hover { background: #B45309; color: #FFFFFF; border-color: #F59E0B; }"
+            )
+            ft_btn.clicked.connect(lambda _c=False, rid=view.request_id: self._on_fast_track(rid))
+            outer.addWidget(ft_btn)
+
         return frame
 
     def _render_controls(self, view: ResponseRequestView) -> None:
@@ -1220,6 +1373,50 @@ class ResponseCenterPage(BasePage):
             manager.execute(view.request_id)
             self.refresh()
             self._re_select(view.request_id)
+
+    def _on_fast_track(self, request_id: str) -> None:
+        """Run fast-track containment workflow (dry-run + approve in one step)."""
+        manager = self._manager_provider()
+        fn = getattr(manager, "fast_track_containment", None)
+        if callable(fn):
+            fn(request_id)
+        else:
+            manager.run_dry_run(request_id)
+            manager.request_approval(request_id)
+            manager.approve(request_id)
+        self.refresh()
+        self._re_select(request_id)
+
+    def _on_direct_containment(self) -> None:
+        """Launch the emergency direct containment dialog."""
+        dialog = _DirectContainmentDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            manager = self._manager_provider()
+            creator = getattr(manager, "create_request_from_incident", None)
+            if callable(creator):
+                view = creator(
+                    incident_id="RAPID-CONTAIN",
+                    action_label=dialog.action_type,
+                    target_value=dialog.target_value,
+                    target_kind="host" if dialog.action_type == "host_isolate" else "ip",
+                    risk_level=dialog.risk_level,
+                    risk_score=dialog.risk_score,
+                )
+                if view is not None:
+                    if dialog.fast_track:
+                        fast_tracker = getattr(manager, "fast_track_containment", None)
+                        if callable(fast_tracker):
+                            fast_tracker(view.request_id)
+                        else:
+                            manager.run_dry_run(view.request_id)
+                            manager.request_approval(view.request_id)
+                            manager.approve(view.request_id)
+                    self.refresh()
+                    self._re_select(view.request_id)
+
+    def select_request(self, request_id: str) -> None:
+        """Select a request in the table and display its details."""
+        self._re_select(request_id)
 
     def _re_select(self, request_id: str) -> None:
         """Re-select the given request after a refresh."""

@@ -119,7 +119,7 @@ files = [
     "runtime",
     "tests",
 ]
-python_version = "3.11"
+python_version = "3.12"
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -132,6 +132,20 @@ exclude = ["build", "dist"]
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = [
+    "shared",
+    "backend",
+    "agent",
+    "network-sensor",
+    "ml-engine",
+    "response-engine",
+    "desktop",
+    "runtime",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

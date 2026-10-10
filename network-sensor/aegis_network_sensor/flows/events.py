@@ -63,6 +63,7 @@ def build_flow_event(
             packets_sent=flow.packet_count,
             bytes_sent=flow.byte_count,
             duration_ms=flow.duration_ms,
+            domain=flow.sni,
         ),
         "message": f"Network flow summary: {describe_flow(flow)}",
     }

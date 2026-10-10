@@ -24,6 +24,7 @@ from aegis_desktop.services.live_network import (
     LiveActivityRow,
     LiveNetworkActivity,
     LiveNetworkTableModel,
+    analyze_packet_threat,
 )
 from aegis_network_sensor.config import SensorSettings
 from aegis_shared.enums import Platform
@@ -78,8 +79,9 @@ def test_live_network_activity_add() -> None:
     row = _activity_row()
     store.add(row)
     assert store.count == 1
-    assert store.latest() is not None
-    assert store.latest().flow_id == "flow-1"
+    latest = store.latest()
+    assert latest is not None
+    assert latest.flow_id == "flow-1"
 
 
 # --- 3. LiveNetworkActivity bounded eviction ------------------------------
@@ -99,7 +101,9 @@ def test_live_network_activity_duplicate_update() -> None:
     store.add(_activity_row(flow_id="f-1", packets=10))
     store.add(_activity_row(flow_id="f-1", packets=20))
     assert store.count == 1
-    assert store.latest().packets == 20
+    latest = store.latest()
+    assert latest is not None
+    assert latest.packets == 20
 
 
 # --- 5. LiveNetworkActivity clear ----------------------------------------
@@ -272,3 +276,220 @@ def test_window_navigate_to_signature() -> None:
     params = list(sig.parameters.keys())
     assert "key" in params
     assert "kwargs" in params
+
+
+# --- 26. Packet threat analysis and red-stripe styling --------------------
+def test_analyze_packet_threat_clean() -> None:
+    is_threat, tag, detail = analyze_packet_threat(
+        source="192.168.1.10:50123",
+        destination="142.250.190.46:443",
+        port="443",
+        protocol="TCP",
+        packets=20,
+        bytes_transferred=4096,
+        state="active",
+    )
+    assert not is_threat
+    assert tag == ""
+    assert detail == ""
+
+
+def test_analyze_packet_threat_critical_ports() -> None:
+    # Port 445 (SMB)
+    is_threat, tag, detail = analyze_packet_threat(
+        source="10.0.0.50:49200",
+        destination="10.0.0.5:445",
+        port="445",
+        protocol="TCP",
+    )
+    assert is_threat
+    assert tag == "SMB EXPLOIT"
+    assert "Port 445" in detail
+
+    # Port 3389 (RDP)
+    is_threat, tag, detail = analyze_packet_threat(
+        source="192.168.1.200:55000",
+        destination="192.168.1.5:3389",
+    )
+    assert is_threat
+    assert tag == "RDP BRUTE"
+
+    # Port 4444 (Metasploit)
+    is_threat, tag, detail = analyze_packet_threat(
+        source="10.0.0.1:4444",
+        destination="10.0.0.2:49000",
+    )
+    assert is_threat
+    assert tag == "METASPLOIT C2"
+
+
+def test_analyze_packet_threat_floods_and_alert_state() -> None:
+    # Traffic volume flood
+    is_threat, tag, _ = analyze_packet_threat(
+        packets=6000,
+        bytes_transferred=20_000_000,
+    )
+    assert is_threat
+    assert tag == "TRAFFIC FLOOD"
+
+    # ICMP flood
+    is_threat, tag, _ = analyze_packet_threat(
+        protocol="ICMP",
+        packets=600,
+    )
+    assert is_threat
+    assert tag == "ICMP FLOOD"
+
+    # Explicit alert state
+    is_threat, tag, _ = analyze_packet_threat(
+        state="suspicious",
+    )
+    assert is_threat
+    assert tag == "ACTIVE ALERT"
+
+
+def test_live_network_table_model_threat_styling(app: Any) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor
+
+    model = LiveNetworkTableModel()
+    suspicious_row = _activity_row(
+        flow_id="f-threat-1",
+        port="445",
+        state="active",
+        is_suspicious=True,
+        threat_tag="SMB EXPLOIT",
+        threat_detail="SMB Port 445 Lateral Movement",
+    )
+    normal_row = _activity_row(flow_id="f-normal-1", port="443", state="active")
+    model.set_rows((suspicious_row, normal_row))
+
+    # Suspicious row (row 0)
+    bg_color = model.data(model.index(0, 0), Qt.ItemDataRole.BackgroundRole)
+    assert isinstance(bg_color, QColor)
+    assert bg_color.red() == 248 and bg_color.green() == 81
+
+    tooltip = model.data(model.index(0, 0), Qt.ItemDataRole.ToolTipRole)
+    assert tooltip is not None
+    assert "SUSPICIOUS NETWORK ACTIVITY" in str(tooltip)
+    assert "SMB EXPLOIT" in str(tooltip)
+
+    # State column (col 8) displays alert badge and red text
+    state_display = model.data(model.index(0, 8), Qt.ItemDataRole.DisplayRole)
+    assert state_display == "🚨 SMB EXPLOIT"
+    fg_color = model.data(model.index(0, 8), Qt.ItemDataRole.ForegroundRole)
+    assert isinstance(fg_color, QColor)
+
+    # Normal row (row 1)
+    assert model.data(model.index(1, 0), Qt.ItemDataRole.BackgroundRole) is None
+    assert model.data(model.index(1, 0), Qt.ItemDataRole.ToolTipRole) is None
+    assert model.data(model.index(1, 8), Qt.ItemDataRole.DisplayRole) == "active"
+
+
+# ---------------------------------------------------------------------------
+# Step 3: SNI Display & Domain Threat Intelligence Tests
+# ---------------------------------------------------------------------------
+
+
+def test_live_network_table_model_displays_sni_alongside_ip(app: Any) -> None:
+    from PySide6.QtCore import Qt
+
+    model = LiveNetworkTableModel()
+    row_with_sni = _activity_row(
+        flow_id="f-sni-1",
+        destination="104.21.5.10:443",
+        sni="api.cloudflare.com",
+    )
+    model.set_rows((row_with_sni,))
+
+    col2_idx = model.index(0, 2)
+    display_val = model.data(col2_idx, Qt.ItemDataRole.DisplayRole)
+    assert display_val == "104.21.5.10:443 (api.cloudflare.com)"
+
+    # Tooltip on destination column indicates resolved SNI
+    tooltip = model.data(col2_idx, Qt.ItemDataRole.ToolTipRole)
+    assert tooltip == "Resolved TLS SNI Hostname: api.cloudflare.com"
+
+
+def test_live_network_table_model_backward_compatibility_no_sni(app: Any) -> None:
+    from PySide6.QtCore import Qt
+
+    model = LiveNetworkTableModel()
+    row_no_sni = _activity_row(
+        flow_id="f-plain-1",
+        destination="192.168.1.1:80",
+        sni=None,
+    )
+    model.set_rows((row_no_sni,))
+
+    col2_idx = model.index(0, 2)
+    display_val = model.data(col2_idx, Qt.ItemDataRole.DisplayRole)
+    # Does not invent or append fake domain
+    assert display_val == "192.168.1.1:80"
+    assert "(" not in display_val
+    assert model.data(col2_idx, Qt.ItemDataRole.ToolTipRole) is None
+
+
+def test_analyze_packet_threat_detects_malicious_domain_ioc() -> None:
+    from aegis_shared.enums import IndicatorType, Severity
+    from aegis_shared.threat_intel.matcher import IOCMatcher
+    from aegis_shared.threat_intel.models import ThreatIndicator
+
+    custom_indicator = ThreatIndicator(
+        indicator_id="IOC-TEST-C2-001",
+        indicator_type=IndicatorType.DOMAIN,
+        value="apt-command-server.net",
+        source="unit-test",
+        confidence=0.95,
+        severity=Severity.CRITICAL,
+        description="Known APT C2 beacon domain",
+    )
+    matcher = IOCMatcher([custom_indicator])
+
+    is_threat, tag, detail = analyze_packet_threat(
+        source="10.0.0.10:49210",
+        destination="185.220.101.5:443",
+        port="443",
+        protocol="TCP",
+        domain="apt-command-server.net",
+        ioc_matcher=matcher,
+    )
+    assert is_threat is True
+    assert tag == "MALICIOUS IOC DOMAIN"
+    assert "apt-command-server.net" in detail
+    assert "Known APT C2 beacon domain" in detail
+
+
+def test_analyze_packet_threat_benign_domain_with_unusual_tld() -> None:
+    # Requirement: Do not classify a domain as malicious solely because of .top or .xyz
+    is_threat_xyz, tag_xyz, _ = analyze_packet_threat(
+        destination="104.26.10.5:443",
+        port="443",
+        protocol="TCP",
+        domain="portfolio-showcase.xyz",
+    )
+    assert is_threat_xyz is False
+    assert tag_xyz == ""
+
+    is_threat_top, tag_top, _ = analyze_packet_threat(
+        destination="104.26.10.6:443",
+        port="443",
+        protocol="TCP",
+        domain="corporate-services.top",
+    )
+    assert is_threat_top is False
+    assert tag_top == ""
+
+
+def test_analyze_packet_threat_missing_sni_and_ech_no_false_claims() -> None:
+    # Missing SNI or ECH encrypted frame (domain="") causes zero false claims
+    is_threat, tag, _ = analyze_packet_threat(
+        destination="104.26.10.7:443",
+        port="443",
+        protocol="TCP",
+        domain="",
+    )
+    assert is_threat is False
+    assert tag == ""
+
+

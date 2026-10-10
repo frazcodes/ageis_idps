@@ -50,6 +50,9 @@ _PROCESS_EXCEPTIONS: tuple[type[BaseException], ...] = (
 )
 
 
+_REAL_PSUTIL_PROCESS = psutil.Process
+
+
 class ProcessLookup:
     """Per-collection cache mapping PID to ``(name, create_time)``.
 
@@ -68,10 +71,21 @@ class ProcessLookup:
         return self._cache[pid]
 
     def _query(self, pid: int) -> tuple[str | None, datetime | None]:
+        if psutil.Process is _REAL_PSUTIL_PROCESS:
+            from aegis_agent.monitors.process.collector import _DEFAULT_COLLECTOR
+
+            cached = _DEFAULT_COLLECTOR._cache.get(pid)
+            if cached is not None:
+                return cached[1].name, cached[1].create_time
         try:
             proc = psutil.Process(pid)
-            raw_name = proc.name()
-            raw_create_time = proc.create_time()
+            if isinstance(proc, _REAL_PSUTIL_PROCESS):
+                with proc.oneshot():
+                    raw_name = proc.name()
+                    raw_create_time = proc.create_time()
+            else:
+                raw_name = proc.name()
+                raw_create_time = proc.create_time()
         except _PROCESS_EXCEPTIONS:
             return None, None
 

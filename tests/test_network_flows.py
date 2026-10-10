@@ -49,6 +49,7 @@ _FLOW_FIELDS = {
     "dst_port",
     "direction",
     "interface",
+    "sni",
     "packet_count",
     "byte_count",
     "first_seen",

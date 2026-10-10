@@ -80,6 +80,7 @@ class FlowAggregator:
                 dst_port=record.dst_port,
                 direction=record.direction,
                 interface=record.interface,
+                sni=record.sni,
                 packet_count=1,
                 byte_count=length,
                 first_seen=record.timestamp,
@@ -92,6 +93,8 @@ class FlowAggregator:
                     "byte_count": existing.byte_count + length,
                     "first_seen": min(existing.first_seen, record.timestamp),
                     "last_seen": max(existing.last_seen, record.timestamp),
+                    # Retain the first valid SNI observed; do not overwrite with None.
+                    "sni": existing.sni or record.sni,
                     # Preserve the first determinable direction.
                     "direction": (
                         existing.direction

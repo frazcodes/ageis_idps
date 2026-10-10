@@ -18,8 +18,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6", reason="desktop extra not installed")
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QApplication, QDialog
 
 from aegis_desktop import window as window_module
 from aegis_desktop.app import create_application
@@ -195,6 +195,23 @@ def test_cancel_leaves_the_dialog_incomplete(app: QApplication) -> None:
     dialog.reject()
 
     assert dialog.is_completed() is False
+
+
+def test_exec_starts_the_probes_so_the_dialog_closes_itself(app: QApplication) -> None:
+    """Regression: the window only calls ``exec()``, which must start the probes.
+
+    Without this the sequence never advances, every check stays pending and
+    ``exec()`` blocks forever - so monitoring never starts.
+    """
+    dialog = PreflightDialog(interval_ms=1, settle_ms=1)
+    QTimer.singleShot(5000, dialog.reject)  # safety net: never hang the suite
+
+    code = dialog.exec()
+
+    assert code == QDialog.DialogCode.Accepted
+    assert dialog.is_completed() is True
+    assert dialog.footer_text() == COMPLETE_FOOTER
+    assert all(state in _TERMINAL_STATES for state in dialog.status_states())
 
 
 # --- Window interception ----------------------------------------------------

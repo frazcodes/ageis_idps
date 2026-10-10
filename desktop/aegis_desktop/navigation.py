@@ -1,14 +1,19 @@
 """Sidebar navigation definition and widget.
 
-The navigation entries are the single source of truth for the pages the console
-exposes. Icons are standard Qt style icons, so no image assets are bundled.
+Replaces the generic Qt built-in icons with custom-painted QPixmap icons:
+each nav item gets a unique Unicode glyph on a semi-transparent
+colour-coded rounded background — no image assets required.
+
+Public API is unchanged so window.py requires no modifications.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtWidgets import QListWidget, QListWidgetItem, QStyle, QWidget
+from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QWidget
 
 
 @dataclass(frozen=True)
@@ -20,47 +25,90 @@ class NavItem:
 
 
 NAV_ITEMS: tuple[NavItem, ...] = (
-    NavItem("dashboard", "Dashboard"),
-    NavItem("assets", "Assets"),
-    NavItem("processes", "Processes"),
-    NavItem("network", "Network"),
-    NavItem("files", "File Integrity"),
-    NavItem("events", "Events"),
+    NavItem("dashboard",  "Dashboard"),
+    NavItem("assets",     "Assets"),
+    NavItem("processes",  "Processes"),
+    NavItem("network",    "Network"),
+    NavItem("files",      "File Integrity"),
+    NavItem("events",     "Events"),
     NavItem("detections", "Detections"),
-    NavItem("incidents", "Incidents"),
-    NavItem("response", "Response Center"),
-    NavItem("risk", "Risk"),
-    NavItem("settings", "Settings"),
+    NavItem("incidents",  "Incidents"),
+    NavItem("response",   "Response Center"),
+    NavItem("risk",       "Risk"),
+    NavItem("settings",   "Settings"),
 )
 
-_ICON_BY_KEY: dict[str, QStyle.StandardPixmap] = {
-    "dashboard": QStyle.StandardPixmap.SP_ComputerIcon,
-    "assets": QStyle.StandardPixmap.SP_DriveHDIcon,
-    "processes": QStyle.StandardPixmap.SP_FileDialogListView,
-    "network": QStyle.StandardPixmap.SP_DriveNetIcon,
-    "files": QStyle.StandardPixmap.SP_FileIcon,
-    "events": QStyle.StandardPixmap.SP_FileDialogDetailedView,
-    "detections": QStyle.StandardPixmap.SP_MessageBoxWarning,
-    "incidents": QStyle.StandardPixmap.SP_MessageBoxCritical,
-    "response": QStyle.StandardPixmap.SP_DialogApplyButton,
-    "risk": QStyle.StandardPixmap.SP_MessageBoxCritical,
-    "settings": QStyle.StandardPixmap.SP_FileDialogContentsView,
+# Each nav key maps to (Unicode glyph, hex accent colour).
+# Colors are chosen so every section has a distinct visual identity.
+_ICON_MAP: dict[str, tuple[str, str]] = {
+    "dashboard":  ("◈", "#3B82F6"),   # blue    – SOC HQ overview
+    "assets":     ("⬡", "#10B981"),   # emerald – hosts / devices
+    "processes":  ("≡", "#8B5CF6"),   # violet  – running processes
+    "network":    ("◎", "#06B6D4"),   # cyan    – network flows
+    "files":      ("▤", "#F59E0B"),   # amber   – file integrity
+    "events":     ("◆", "#6366F1"),   # indigo  – raw events log
+    "detections": ("⚠", "#F97316"),   # orange  – anomaly findings
+    "incidents":  ("⊗", "#EF4444"),   # red     – active incidents
+    "response":   ("⚡", "#10B981"),   # green   – IPS response center
+    "risk":       ("▲", "#EC4899"),   # pink    – risk scoring
+    "settings":   ("⚙", "#94A3B8"),   # muted   – configuration
 }
+
+_ICON_SIZE = 22   # px — icon pixmap square
+
+
+def _make_icon(glyph: str, color_hex: str, size: int = _ICON_SIZE) -> QIcon:
+    """Paint *glyph* on a semi-transparent rounded background of *color_hex*.
+
+    Returns a ``QIcon`` suitable for ``QListWidgetItem``.  No image files
+    are needed — everything is rendered at runtime via ``QPainter``.
+    """
+    px = QPixmap(size, size)
+    px.fill(Qt.GlobalColor.transparent)
+
+    p = QPainter(px)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # Soft coloured background
+    bg = QColor(color_hex)
+    bg.setAlpha(38)
+    p.setBrush(QBrush(bg))
+    p.setPen(Qt.PenStyle.NoPen)
+    p.drawRoundedRect(0, 0, size, size, 5, 5)
+
+    # Glyph
+    font = QFont("Segoe UI", max(8, int(size * 0.52)), QFont.Weight.Bold)
+    p.setFont(font)
+    p.setPen(QPen(QColor(color_hex)))
+    p.drawText(QRect(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, glyph)
+
+    p.end()
+    return QIcon(px)
 
 
 class Sidebar(QListWidget):
-    """Left navigation list with one row per :data:`NAV_ITEMS` entry."""
+    """Left navigation list with unique color-coded icons per section.
+
+    Maintains the same interface as the original so ``window.py`` is
+    unaffected:
+    - ``setCurrentRow(row)``
+    - ``currentRowChanged`` signal
+    - ``navigate_to(key)``
+    - ``current_key`` property
+    - ``keys()``
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("Sidebar")
         self.setFixedWidth(220)
+        self.setIconSize(QSize(_ICON_SIZE, _ICON_SIZE))
 
         for item in NAV_ITEMS:
-            entry = QListWidgetItem(item.title)
-            icon = _ICON_BY_KEY.get(item.key)
-            if icon is not None:
-                entry.setIcon(self.style().standardIcon(icon))
+            glyph, color = _ICON_MAP.get(item.key, ("○", "#94A3B8"))
+            icon = _make_icon(glyph, color)
+            entry = QListWidgetItem(icon, f"  {item.title}")
+            entry.setSizeHint(QSize(200, 42))   # taller rows look more premium
             self.addItem(entry)
 
         self.setCurrentRow(0)
@@ -70,10 +118,10 @@ class Sidebar(QListWidget):
         return tuple(item.key for item in NAV_ITEMS)
 
     def navigate_to(self, key: str) -> None:
-        """Select the navigation entry for ``key``.
+        """Select the navigation entry for *key*.
 
         Raises:
-            KeyError: if ``key`` is not a known navigation entry.
+            KeyError: if *key* is not a known navigation entry.
         """
         for row, item in enumerate(NAV_ITEMS):
             if item.key == key:

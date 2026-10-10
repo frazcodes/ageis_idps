@@ -127,6 +127,17 @@ class FileTableModel(QAbstractTableModel):
             return self._tooltip(row, column)
         if role == Qt.ItemDataRole.UserRole:
             return self._sort_key(row, column)
+        if role == Qt.ItemDataRole.ForegroundRole:
+            from PySide6.QtGui import QColor
+
+            if column == 4 and row.sha256:
+                return QColor("#38BDF8")
+            if column == 5:
+                return QColor("#10B981") if row.hash_status == "hashed" else QColor("#F59E0B")
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            if column in (1, 2, 3, 5):
+                return int(Qt.AlignmentFlag.AlignCenter)
+            return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         return None
 
     @staticmethod
@@ -170,8 +181,10 @@ class FileTableModel(QAbstractTableModel):
 class FilesPage(BasePage):
     """Read-only file-integrity posture and baseline table."""
 
-    PAGE_KEY = "files"
-    TITLE = "File Integrity"
+    PAGE_KEY  = "files"
+    ICON       = "▤"
+    ICON_COLOR = "#F59E0B"
+    TITLE     = "File Integrity"
     SUBTITLE = "Read-only baseline for explicitly configured files and directories."
     EMPTY_STATE = ""
 
@@ -231,6 +244,7 @@ class FilesPage(BasePage):
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(False)
+        self._table.horizontalHeader().setSectionsMovable(True)
         for index, width in enumerate(_COLUMN_WIDTHS):
             self._table.setColumnWidth(index, width)
         self._table.sortByColumn(0, Qt.SortOrder.AscendingOrder)

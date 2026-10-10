@@ -43,6 +43,8 @@ class FlowRecord(BaseModel):
     dst_port: int | None = Field(default=None, ge=0, le=65535)
     direction: NetworkDirection = NetworkDirection.UNKNOWN
     interface: str | None = Field(default=None, max_length=64)
+    #: TLS Server Name Indication (SNI) hostname, if observed in the flow.
+    sni: str | None = Field(default=None, max_length=253)
     packet_count: int = Field(default=0, ge=0)
     byte_count: int = Field(default=0, ge=0)
     first_seen: datetime

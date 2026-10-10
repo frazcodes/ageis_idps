@@ -194,8 +194,10 @@ class FindingTableModel(QAbstractTableModel):
 class DetectionsPage(BasePage):
     """Read-only table + detail view of deterministic detection findings."""
 
-    PAGE_KEY = "detections"
-    TITLE = "Detections"
+    PAGE_KEY  = "detections"
+    ICON       = "⚠"
+    ICON_COLOR = "#F97316"
+    TITLE     = "Detections"
     SUBTITLE = "Read-only inspection of deterministic rule-based findings."
     EMPTY_STATE = ""
 
@@ -256,6 +258,7 @@ class DetectionsPage(BasePage):
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(False)
+        self._table.horizontalHeader().setSectionsMovable(True)
         for index, width in enumerate(_COLUMN_WIDTHS):
             self._table.setColumnWidth(index, width)
         self._table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
@@ -675,7 +678,7 @@ class DetectionsPage(BasePage):
         """Render minimal fallback detail when investigation fails."""
         frame, form = self._build_section("FINDING DETAIL")
         self._investigation_layout.addWidget(frame)
-        for key, value in describe_finding(finding).items():
+        for key, value in describe_finding(finding).items():  # type: ignore[arg-type]
             self._add_field(form, key, value)
 
     @staticmethod

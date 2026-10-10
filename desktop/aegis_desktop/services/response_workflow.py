@@ -15,12 +15,13 @@ from __future__ import annotations
 import hashlib as _hl
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aegis_shared.logging import get_logger
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from aegis_desktop.services.detections import DetectionFinding
+    from aegis_response_engine.audit.history import ResponseAuditHistory
 
 logger = get_logger(__name__)
 
@@ -116,6 +117,28 @@ class ResponseWorkflowManager:
             if e.status == "pending_approval"
         )
 
+    def actionable_count(self) -> int:
+        """Requests still awaiting operator action.
+
+        Everything except the terminal statuses (``executed``, ``rejected`` and
+        ``cancelled``) counts: a fresh ``draft`` is work someone still has to
+        do — dry run, approval or execution — which is what the dashboard's
+        Action Center reports.
+        """
+        return sum(
+            1
+            for e in self._entries.values()
+            if e.status not in ("executed", "rejected", "cancelled")
+        )
+
+    def clear(self) -> None:
+        """Drop every tracked request (test isolation and reset paths).
+
+        The audit history is append-only and is deliberately left untouched.
+        """
+        self._entries.clear()
+        self._order.clear()
+
     def approved_count(self) -> int:
         """Number of requests in ``approved`` status."""
         return sum(
@@ -182,9 +205,11 @@ class ResponseWorkflowManager:
             )
             decision = resolved_engine.evaluate(request)  # type: ignore[attr-defined]
 
+            rec_action = str(getattr(action, "value", action))
+            rec_target = str(getattr(target, "value", target))
             rid = _request_id(
-                policy_view.recommended_action or action.value,
-                policy_view.target or target.value,
+                policy_view.recommended_action or rec_action,
+                policy_view.target or rec_target,
                 (finding.finding_id,),
             )
 
@@ -217,8 +242,14 @@ class ResponseWorkflowManager:
         risk_level: str,
         risk_score: int,
         finding_ids: tuple[str, ...] = (),
+        engine: object | None = None,
     ) -> ResponseRequestView | None:
-        """Create a workflow entry from an incident context."""
+        """Create a workflow entry from an incident context.
+
+        ``engine`` overrides the process-wide policy engine (mirrors
+        :meth:`create_request`); the default stays the fail-closed global
+        settings.
+        """
         from aegis_response_engine.policy import (
             ResponsePolicyEngine,
             ResponseRequest,
@@ -265,12 +296,12 @@ class ResponseWorkflowManager:
             incident_id=incident_id,
         )
 
-        engine = ResponsePolicyEngine(get_response_policy_settings())
-        decision = engine.evaluate(request)
+        resolved_engine: Any = engine or ResponsePolicyEngine(get_response_policy_settings())
+        decision = resolved_engine.evaluate(request)
 
         rid = _request_id(action_label, target_value, finding_ids)
         now = datetime.now()
-        policy_settings = getattr(engine, "_settings", None)
+        policy_settings = getattr(resolved_engine, "_settings", None)
         entry = _Entry(
             request=request,
             request_id=rid,
@@ -322,10 +353,12 @@ class ResponseWorkflowManager:
             return self._to_view(entry)
 
         decision = entry.decision
-        if decision is not None and getattr(decision, "status", None) is not None:
-            decision_status = str(getattr(decision.status, "value", decision.status))
-            if decision_status == "denied":
-                return self._to_view(entry)
+        if decision is not None:
+            d_status = getattr(decision, "status", None)
+            if d_status is not None:
+                decision_status = str(getattr(d_status, "value", d_status))
+                if decision_status == "denied":
+                    return self._to_view(entry)
 
         entry.status = "pending_approval"
         entry.updated_at = datetime.now()
@@ -344,10 +377,12 @@ class ResponseWorkflowManager:
             return self._to_view(entry)
 
         decision = entry.decision
-        if decision is not None and getattr(decision, "status", None) is not None:
-            decision_status = str(getattr(decision.status, "value", decision.status))
-            if decision_status == "denied":
-                return self._to_view(entry)
+        if decision is not None:
+            d_status = getattr(decision, "status", None)
+            if d_status is not None:
+                decision_status = str(getattr(d_status, "value", d_status))
+                if decision_status == "denied":
+                    return self._to_view(entry)
 
         entry.status = "approved"
         entry.updated_at = datetime.now()
@@ -377,6 +412,59 @@ class ResponseWorkflowManager:
         entry.status = "cancelled"
         entry.updated_at = datetime.now()
         return self._to_view(entry)
+
+    def fast_track_containment(self, request_id: str) -> ResponseRequestView | None:
+        """One-click fast-track workflow: executes dry run, validates policy, and approves.
+
+        Moves a request from draft/ready through dry run and approval in a single pass.
+        Returns the updated view in 'approved' status (or blocked if policy forbids).
+        """
+        entry = self._entries.get(request_id)
+        if entry is None:
+            return None
+
+        # Step 1: Run dry run if still in pre-dry-run state
+        if entry.status in ("draft", "dry_run_ready"):
+            v = self.run_dry_run(request_id)
+            if v is None:
+                return None
+            if (v.dry_run_status or "").lower() != "would_apply":
+                return v
+
+        # Step 2: Request approval if dry run completed
+        if entry.status == "dry_run_completed":
+            v = self.request_approval(request_id)
+            if v is None:
+                return None
+
+        # Step 3: Approve if pending approval
+        if entry.status == "pending_approval":
+            return self.approve(request_id)
+
+        return self._to_view(entry)
+
+    def direct_contain_ip(
+        self,
+        ip_address: str,
+        *,
+        reason: str = "Emergency Direct Containment",
+        risk_level: str = "critical",
+        risk_score: int = 95,
+        engine: object | None = None,
+    ) -> ResponseRequestView | None:
+        """Create and prime an emergency IP containment request for execution."""
+        req_view = self.create_request_from_incident(
+            incident_id="RAPID-CONTAIN",
+            action_label="block_ip",
+            target_value=ip_address,
+            target_kind="ip",
+            risk_level=risk_level,
+            risk_score=risk_score,
+            engine=engine,
+        )
+        if req_view is None:
+            return None
+        return self.fast_track_containment(req_view.request_id)
 
     def execute(
         self,
@@ -422,7 +510,7 @@ class ResponseWorkflowManager:
             )
 
             entry.execution_result = result
-            if result.success:  # type: ignore[union-attr]
+            if getattr(result, "success", False):
                 entry.status = "executed"
             else:
                 entry.status = "execution_failed"
@@ -473,18 +561,14 @@ class ResponseWorkflowManager:
         policy_decision = ""
         if decision is not None:
             ds = getattr(decision, "status", None)
-            if hasattr(ds, "value"):
-                policy_decision = ds.value
-            elif ds is not None:
-                policy_decision = str(ds)
+            if ds is not None:
+                policy_decision = str(getattr(ds, "value", ds))
 
         dry_run_status = "not_started"
         if entry.dry_run is not None:
             ds = getattr(entry.dry_run, "status", None)
-            if hasattr(ds, "value"):
-                dry_run_status = ds.value
-            elif ds is not None:
-                dry_run_status = str(ds)
+            if ds is not None:
+                dry_run_status = str(getattr(ds, "value", ds))
 
         execution_status = "not_attempted"
         verification_status = VerificationStatus.NOT_APPLICABLE
@@ -544,12 +628,15 @@ class ResponseWorkflowManager:
 
     def _to_view(self, entry: _Entry) -> ResponseRequestView:
         from aegis_response_engine.policy.engine import ACTION_LABELS
+        from aegis_shared.enums import ActionType
 
         request = entry.request
-        action_label = ACTION_LABELS.get(
-            getattr(request, "action", None),
-            str(getattr(request, "action", "unknown")),
-        )
+        action_val = getattr(request, "action", None)
+        action_label = None
+        if isinstance(action_val, ActionType):
+            action_label = ACTION_LABELS.get(action_val)
+        if not action_label:
+            action_label = str(getattr(action_val, "value", action_val or "unknown"))
         target_value = str(getattr(request, "target", ""))
         if hasattr(request, "target") and hasattr(request.target, "value"):
             target_value = request.target.value
@@ -561,18 +648,14 @@ class ResponseWorkflowManager:
         decision_status = ""
         if entry.decision is not None:
             ds = getattr(entry.decision, "status", None)
-            if hasattr(ds, "value"):
-                decision_status = ds.value
-            elif ds is not None:
-                decision_status = str(ds)
+            if ds is not None:
+                decision_status = str(getattr(ds, "value", ds))
 
         dry_run_status = "not_started"
         if entry.dry_run is not None:
             ds = getattr(entry.dry_run, "status", None)
-            if hasattr(ds, "value"):
-                dry_run_status = ds.value
-            elif ds is not None:
-                dry_run_status = str(ds)
+            if ds is not None:
+                dry_run_status = str(getattr(ds, "value", ds))
 
         policy_version = ""
         if entry.decision is not None:
@@ -660,7 +743,7 @@ class ResponseWorkflowManager:
 # Module-level singletons (used by all desktop pages)
 # ---------------------------------------------------------------------------
 _workflow_manager: ResponseWorkflowManager | None = None
-_audit_history: object | None = None  # ResponseAuditHistory
+_audit_history: ResponseAuditHistory | None = None
 
 
 def get_workflow_manager() -> ResponseWorkflowManager:
@@ -671,7 +754,7 @@ def get_workflow_manager() -> ResponseWorkflowManager:
     return _workflow_manager
 
 
-def get_audit_history() -> object:
+def get_audit_history() -> ResponseAuditHistory:
     """Return the process-wide response audit history."""
     global _audit_history
     if _audit_history is None:

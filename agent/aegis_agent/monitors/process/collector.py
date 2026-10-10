@@ -51,16 +51,37 @@ _PARENT_EXCEPTIONS: tuple[type[BaseException], ...] = (
 class ProcessCollector:
     """Enumerate running processes and build safe :class:`ProcessRecord` objects."""
 
+    def __init__(self) -> None:
+        self._cache: dict[int, tuple[Any, ProcessRecord]] = {}
+
     def collect(self) -> ProcessSnapshot:
         """Return a snapshot of all currently visible processes.
 
         The snapshot is ordered by PID so output is deterministic.
         """
-        records = [
-            record
-            for proc in self._iter_processes()
-            if (record := self._collect_record(proc)) is not None
-        ]
+        records: list[ProcessRecord] = []
+        next_cache: dict[int, tuple[Any, ProcessRecord]] = {}
+        for proc in self._iter_processes():
+            if isinstance(proc, psutil.Process):
+                pid = proc.pid
+                cached = self._cache.get(pid)
+                if cached is not None and cached[0] is proc:
+                    records.append(cached[1])
+                    next_cache[pid] = cached
+                    continue
+                try:
+                    with proc.oneshot():
+                        record = self._collect_record(proc)
+                except _SKIP_EXCEPTIONS:
+                    record = None
+                if record is not None:
+                    records.append(record)
+                    next_cache[pid] = (proc, record)
+            else:
+                record = self._collect_record(proc)
+                if record is not None:
+                    records.append(record)
+        self._cache = next_cache
         records.sort(key=lambda item: (item.pid, item.create_time or _MIN_UTC))
         return ProcessSnapshot(processes=tuple(records))
 
@@ -132,10 +153,12 @@ class ProcessCollector:
 #: Sort fallback for records without a creation time.
 _MIN_UTC = datetime.min.replace(tzinfo=UTC)
 
+_DEFAULT_COLLECTOR = ProcessCollector()
+
 
 def collect_process_snapshot() -> ProcessSnapshot:
     """Convenience wrapper for a single read-only process snapshot."""
-    return ProcessCollector().collect()
+    return _DEFAULT_COLLECTOR.collect()
 
 
 __all__ = ["ProcessCollector", "collect_process_snapshot"]

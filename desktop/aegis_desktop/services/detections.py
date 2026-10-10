@@ -9,6 +9,11 @@ The detection engine remains the single source of truth: no rules are duplicated
 in the GUI, no findings are fabricated, and no independent event store exists. It
 never starts a producer, never runs a detection loop and never performs a
 response. Sensitive evidence is redacted at the presentation layer.
+
+One deliberate addition for demo mode: findings injected by the threat
+simulation playbooks (tagged ``simulated``) are overlaid on top of the engine's
+own results so the page stays populated while the panel is watching. They are
+read from the demo module, never generated here.
 """
 
 from __future__ import annotations
@@ -190,6 +195,28 @@ def _posture(engine: DetectionEngine | None, findings: int) -> DetectionPosture:
     )
 
 
+def _with_simulated(findings: tuple[DetectionFinding, ...]) -> tuple[DetectionFinding, ...]:
+    """Append demo findings injected by the threat-simulation playbooks.
+
+    The demo module owns Qt dialogs, so it is imported lazily; if it cannot be
+    loaded the engine's findings are returned untouched. Duplicates (same
+    ``finding_id``) are dropped, engine results always come first, and the demo
+    findings arrive already tagged ``simulated``.
+    """
+    try:
+        from aegis_desktop.threat_sim import simulated_findings
+
+        demo = simulated_findings()
+    except Exception as exc:  # pragma: no cover - only without the demo module
+        logger.debug("Simulated finding overlay unavailable: %s", exc)
+        return findings
+    if not demo:
+        return findings
+    seen = {finding.finding_id for finding in findings}
+    extra = tuple(finding for finding in demo if finding.finding_id not in seen)
+    return (*findings, *extra) if extra else findings
+
+
 def _to_row(finding: DetectionFinding) -> FindingRow:
     return FindingRow(
         timestamp=finding.timestamp,
@@ -223,6 +250,8 @@ def collect_finding_view(
 
     The engine is only evaluated; it is never started, and no producer is
     triggered. With no engine published, an honest "not running" state is shown.
+    Findings injected by the threat-simulation playbooks (tagged ``simulated``)
+    are appended so the demo data stays visible even with no engine running.
     """
     resolved = engine
     if resolved is None:
@@ -240,6 +269,7 @@ def collect_finding_view(
         else:
             events = (events_provider or _default_events)()
             findings = _merge_findings(resolved.evaluate_many(events), events)
+        findings = _with_simulated(findings)
     except Exception as exc:
         # Never surface stack traces or sensitive details in the UI.
         logger.warning("Reading detection findings failed: %s", exc)

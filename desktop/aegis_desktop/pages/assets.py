@@ -53,10 +53,11 @@ _COLUMNS = (
     "IP Addresses",
     "Services",
     "Peers",
+    "Exposure",
     "Status",
 )
 
-_COLUMN_WIDTHS = (200, 200, 240, 90, 80, 100)
+_COLUMN_WIDTHS = (180, 180, 220, 80, 70, 110, 90)
 
 _INITIAL_HINT = (
     "Select Refresh to inspect observed hosts. Assets are observed by the running "
@@ -120,8 +121,28 @@ class AssetTableModel(QAbstractTableModel):
             return ", ".join(row.ip_addresses) if row.ip_addresses else MISSING
         if role == Qt.ItemDataRole.UserRole:
             return self._sort_key(row, column)
-        if role == Qt.ItemDataRole.ForegroundRole and column == 5:
-            return state_color(row.status)
+        if role == Qt.ItemDataRole.ForegroundRole:
+            from PySide6.QtGui import QColor
+
+            if column == 1:
+                return QColor("#F8FAFC")
+            if column == 2:
+                return QColor("#38BDF8")
+            if column in (3, 4):
+                return QColor("#10B981")
+            if column == 5:
+                grade = getattr(row, "exposure_grade", "A")
+                if grade in ("A", "B"):
+                    return QColor("#10B981")
+                if grade == "C":
+                    return QColor("#F59E0B")
+                return QColor("#EF4444")
+            if column == 6:
+                return state_color(row.status)
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            if column in (3, 4, 5, 6):
+                return int(Qt.AlignmentFlag.AlignCenter)
+            return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         return None
 
     @staticmethod
@@ -137,6 +158,10 @@ class AssetTableModel(QAbstractTableModel):
         if column == 4:
             return str(row.peer_count)
         if column == 5:
+            grade = getattr(row, "exposure_grade", "A")
+            score = getattr(row, "exposure_score", 0)
+            return f"GRADE {grade} ({score}%)"
+        if column == 6:
             return row.status.upper()
         return MISSING
 
@@ -146,14 +171,18 @@ class AssetTableModel(QAbstractTableModel):
             return row.service_count
         if column == 4:
             return row.peer_count
+        if column == 5:
+            return getattr(row, "exposure_score", 0)
         return AssetTableModel._display(row, column).lower()
 
 
 class AssetsPage(BasePage):
     """Read-only table + detail view of observed hosts/assets."""
 
-    PAGE_KEY = "assets"
-    TITLE = "Assets"
+    PAGE_KEY  = "assets"
+    ICON       = "⬡"
+    ICON_COLOR = "#10B981"
+    TITLE     = "Assets"
     SUBTITLE = "Read-only inspection of observed hosts, services and network peers."
     EMPTY_STATE = ""
 
@@ -210,6 +239,7 @@ class AssetsPage(BasePage):
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(False)
+        self._table.horizontalHeader().setSectionsMovable(True)
         for index, width in enumerate(_COLUMN_WIDTHS):
             self._table.setColumnWidth(index, width)
 
@@ -256,11 +286,14 @@ class AssetsPage(BasePage):
         self._peers_label.setObjectName("CardHint")
         self._new_label = QLabel("New Observations: —")
         self._new_label.setObjectName("CardHint")
+        self._exposure_label = QLabel("Fleet Exposure: —")
+        self._exposure_label.setObjectName("CardHint")
 
         posture.addWidget(self._runtime_label)
         posture.addWidget(self._active_label)
         posture.addWidget(self._peers_label)
         posture.addWidget(self._new_label)
+        posture.addWidget(self._exposure_label)
         posture.addStretch(1)
         return posture
 
@@ -337,6 +370,8 @@ class AssetsPage(BasePage):
         if view.count == 0:
             self._hint_label.setText("No assets observed")
             self._hint_label.setVisible(True)
+        else:
+            self._table.selectRow(0)
 
     def _show_initial_state(self) -> None:
         self._snapshot = None
@@ -364,6 +399,7 @@ class AssetsPage(BasePage):
             self._active_label.setText("Active Assets: —")
             self._peers_label.setText("Observed Peers: —")
             self._new_label.setText("New Observations: —")
+            self._exposure_label.setText("Fleet Exposure: —")
             return
         posture = view.posture
         self._runtime_label.setText(
@@ -372,6 +408,19 @@ class AssetsPage(BasePage):
         self._active_label.setText(f"Active Assets: {posture.active_assets}")
         self._peers_label.setText(f"Observed Peers: {posture.peers}")
         self._new_label.setText(f"New Observations: {posture.new_observations}")
+
+        if view.rows:
+            total_score = sum(getattr(r, "exposure_score", 0) for r in view.rows)
+            avg_score = int(total_score / len(view.rows))
+            grades = {getattr(r, "exposure_grade", "A") for r in view.rows}
+            worst_grade = "A"
+            for candidate in ("F", "D", "C", "B"):
+                if candidate in grades:
+                    worst_grade = candidate
+                    break
+            self._exposure_label.setText(f"Fleet Exposure: Grade {worst_grade} ({avg_score}% avg)")
+        else:
+            self._exposure_label.setText("Fleet Exposure: —")
 
     def _set_error(self, message: str | None) -> None:
         self._error_active = message is not None
@@ -439,6 +488,27 @@ class AssetsPage(BasePage):
                 self._add_field(form, label, detail)
         else:
             self._add_field(form, "Status", "No network relationships observed")
+
+        frame, form = self._build_section("ATTACK SURFACE & EXPOSURE ANALYSIS")
+        self._detail_layout.addWidget(frame)
+        grade = getattr(row, "exposure_grade", "A")
+        score = getattr(row, "exposure_score", 0)
+        grade_desc = {
+            "A": "LOW EXPOSURE (Hardened Endpoint)",
+            "B": "MODERATE EXPOSURE (Standard Endpoint)",
+            "C": "ELEVATED RISK (Multiple Open Services)",
+            "D": "HIGH ATTACK SURFACE (Exposed Services)",
+            "F": "CRITICAL RISK (High-Risk Management Ports)",
+        }.get(grade, "MONITORED")
+        self._add_field(form, "Exposure Grade", f"GRADE {grade} — {grade_desc}")
+        self._add_field(form, "Exposure Score", f"{score} / 100")
+        if score >= 60:
+            rec = "CRITICAL: Isolate host or block high-risk ports via Response Center."
+        elif score >= 40:
+            rec = "ELEVATED: Audit active listening ports and limit remote peer ingress."
+        else:
+            rec = "HEALTHY: Endpoint attack surface is minimal and well-segmented."
+        self._add_field(form, "Hardening Advice", rec)
 
         self._detail_layout.addStretch(1)
 

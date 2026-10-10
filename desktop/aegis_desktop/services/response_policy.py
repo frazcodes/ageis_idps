@@ -51,19 +51,23 @@ class ResponsePolicyView:
     decision_id: str
 
 
-def _recommend(finding: DetectionFinding) -> tuple[object, object] | None:
+def _recommend(finding: object) -> tuple[object, object] | None:
     """Return ``(action, target)`` when the finding exposes a usable target."""
     from aegis_response_engine.policy import ResponseTarget, ResponseTargetKind
     from aegis_shared.enums import ActionType
 
-    evidence = dict(finding.evidence)
-    if finding.rule_id == "AEGIS-NET-007":
+    raw_evidence = getattr(finding, "evidence", None)
+    if raw_evidence is None:
+        return None
+    evidence = dict(raw_evidence)
+    rule_id = getattr(finding, "rule_id", "")
+    if rule_id == "AEGIS-NET-007":
         remote = evidence.get("remote_ip")
         if remote:
             target = ResponseTarget(kind=ResponseTargetKind.IP, value=remote)
             return ActionType.BLOCK_IP, target
     if (
-        finding.rule_id == "AEGIS-IOC-001"
+        rule_id == "AEGIS-IOC-001"
         and evidence.get("indicator_type") == "ip"
         and evidence.get("observed_value")
     ):
@@ -73,7 +77,7 @@ def _recommend(finding: DetectionFinding) -> tuple[object, object] | None:
 
 
 def collect_response_policy_view(
-    finding: DetectionFinding,
+    finding: DetectionFinding | object,
     *,
     risk_level: str | None = None,
     risk_score: int | None = None,
@@ -93,6 +97,8 @@ def collect_response_policy_view(
         return None
     action, target = recommendation
 
+    from datetime import UTC
+
     from aegis_response_engine.policy import (
         ACTION_LABELS,
         ResponseDecisionStatus,
@@ -102,21 +108,24 @@ def collect_response_policy_view(
     )
     from aegis_shared.enums import RiskLevel
 
-    level_text = risk_level or _SEVERITY_TO_RISK.get(finding.severity.value, "informational")
+    raw_sev = getattr(finding, "severity", "info")
+    sev_str = getattr(raw_sev, "value", str(raw_sev))
+    level_text = risk_level or _SEVERITY_TO_RISK.get(sev_str, "informational")
     try:
         level = RiskLevel(level_text)
     except ValueError:
         level = RiskLevel.INFORMATIONAL
 
+    resolved_ts = timestamp or getattr(finding, "timestamp", None) or datetime.now(UTC)
     request = ResponseRequest(
         action=action,  # type: ignore[arg-type]
         target=target,  # type: ignore[arg-type]
         risk_level=level,
-        risk_score=int(risk_score or 0),
-        timestamp=timestamp or finding.timestamp,
-        finding_ids=(finding.finding_id,),
-        rule_ids=(finding.rule_id,),
-        host_id=finding.host_id,
+        risk_score=risk_score or 0,
+        timestamp=resolved_ts,
+        finding_ids=(getattr(finding, "finding_id", ""),),
+        rule_ids=(getattr(finding, "rule_id", ""),),
+        host_id=getattr(finding, "host_id", None) or "local",
     )
     resolved_engine = engine or ResponsePolicyEngine(get_response_policy_settings())
     decision = resolved_engine.evaluate(request)  # type: ignore[attr-defined]

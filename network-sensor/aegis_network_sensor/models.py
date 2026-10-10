@@ -52,6 +52,8 @@ class PacketRecord(BaseModel):
     direction: NetworkDirection = NetworkDirection.UNKNOWN
     #: Deterministic identifier of the directional flow this packet belongs to.
     flow_id: str | None = Field(default=None, max_length=256)
+    #: TLS Server Name Indication (SNI) hostname, if observed in a ClientHello frame.
+    sni: str | None = Field(default=None, max_length=253)
 
     @field_validator("timestamp")
     @classmethod

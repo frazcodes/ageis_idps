@@ -17,6 +17,10 @@ from aegis_desktop.services.assets import (
     asset_context_for_host,
     collect_asset_view,
 )
+from aegis_desktop.services.audio_alert import (
+    AudioAlertService,
+    get_audio_alert_service,
+)
 from aegis_desktop.services.correlation import (
     CorrelationEvidence,
     collect_correlations,
@@ -74,6 +78,12 @@ from aegis_desktop.services.incidents import (
     collect_incident_view,
     describe_incident,
 )
+from aegis_desktop.services.live_network import (
+    MAX_ACTIVITY_ROWS,
+    LiveActivityRow,
+    LiveNetworkActivity,
+    LiveNetworkTableModel,
+)
 from aegis_desktop.services.monitoring import (
     CAPTURE_ACTIVE,
     CAPTURE_ERROR,
@@ -129,12 +139,6 @@ from aegis_desktop.services.settings import (
     SettingsView,
     collect_settings_view,
 )
-from aegis_desktop.services.live_network import (
-    MAX_ACTIVITY_ROWS,
-    LiveActivityRow,
-    LiveNetworkActivity,
-    LiveNetworkTableModel,
-)
 from aegis_desktop.services.telemetry import TelemetryHistory, TelemetrySample
 from aegis_desktop.services.threat_intel import (
     IOCMatchView,
@@ -155,6 +159,7 @@ __all__ = [
     "INCIDENT_ERROR",
     "INCIDENT_RUNTIME_NOT_RUNNING",
     "INVENTORY_ERROR",
+    "MAX_ACTIVITY_ROWS",
     "MISSING",
     "PORT_ERROR",
     "PROCESS_ERROR",
@@ -167,6 +172,7 @@ __all__ = [
     "AssetPosture",
     "AssetRow",
     "AssetSnapshotView",
+    "AudioAlertService",
     "CommunicationView",
     "ConfigField",
     "ConfigSection",
@@ -183,16 +189,15 @@ __all__ = [
     "FlowRow",
     "IOCMatchView",
     "IncidentAnomalyView",
-    "LiveActivityRow",
-    "LiveNetworkActivity",
-    "LiveNetworkTableModel",
-    "MAX_ACTIVITY_ROWS",
     "IncidentEventView",
     "IncidentFindingView",
     "IncidentPosture",
     "IncidentRow",
     "IncidentSnapshotView",
     "InventoryView",
+    "LiveActivityRow",
+    "LiveNetworkActivity",
+    "LiveNetworkTableModel",
     "MonitorState",
     "MonitoringController",
     "MonitoringStatus",
@@ -244,6 +249,7 @@ __all__ = [
     "format_bytes",
     "format_timestamp",
     "get_active_monitoring_controller",
+    "get_audio_alert_service",
     "get_audit_history",
     "get_workflow_manager",
     "reasons_summary",

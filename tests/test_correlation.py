@@ -9,7 +9,9 @@ persistence is used.
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 import pytest
 
@@ -29,7 +31,7 @@ from aegis_shared.enums import (
     SourceKind,
 )
 from aegis_shared.events import HostRef, SecurityEvent, SourceRef
-from aegis_shared.risk import AnomalySignal, RiskEngine
+from aegis_shared.risk import AnomalySignal, RiskAssessment, RiskEngine
 
 _TS = datetime(2026, 6, 1, 10, 0, 0, tzinfo=UTC)
 
@@ -77,12 +79,12 @@ def _finding(
     )
 
 
-def _assess(event: SecurityEvent, findings: tuple[DetectionFinding, ...]) -> object:
+def _assess(event: SecurityEvent, findings: tuple[DetectionFinding, ...]) -> RiskAssessment:
     return RiskEngine().assess(event, findings)
 
 
 @pytest.fixture(autouse=True)
-def _clean_incidents() -> object:
+def _clean_incidents() -> Generator[None, None, None]:
     clear_active_incidents()
     yield
     clear_active_incidents()
@@ -289,8 +291,8 @@ def test_runtime_publishes_and_clears_incidents() -> None:
         agent_settings=_agent(enable_process_monitor=True, enable_port_monitor=True),
         sensor_settings=SensorSettings(capture_enabled=False),
         detection_engine=detection,
-        process_monitor=process,
-        port_monitor=port,
+        process_monitor=cast(Any, process),
+        port_monitor=cast(Any, port),
     )
     runtime.start()
     runtime.poll_once()
@@ -350,7 +352,7 @@ def test_desktop_page_renders_incident() -> None:
 
     from aegis_desktop.app import create_application
     from aegis_desktop.pages.incidents import IncidentsPage
-    from aegis_desktop.services.incidents import collect_incident_view
+    from aegis_desktop.services.incidents import IncidentSnapshotView, collect_incident_view
 
     app = create_application([])
     assert app is not None
@@ -359,7 +361,7 @@ def test_desktop_page_renders_incident() -> None:
     f2 = _finding("e2", rule_id="AEGIS-LISTEN-001", event_type=EventType.PORT_LISTENING)
     incident = IncidentCorrelator().correlate([], [f1, f2])[0]
 
-    def provider() -> object:
+    def provider() -> IncidentSnapshotView:
         return collect_incident_view(
             incidents_provider=lambda: (incident,),
             findings_provider=lambda: {f1.finding_id: f1, f2.finding_id: f2},
@@ -379,8 +381,12 @@ def test_desktop_page_renders_incident() -> None:
     assert "Reason" in keys
     assert "Risk Score" in keys
     assert "ML Anomaly" in keys
+    assert "Timeline Stages" in keys
+    assert "Forensic Storyline" in keys
     values = page.detail_values()
     assert "No ML anomaly signal available" in values
+    assert page.timeline_stage_count() >= 2
+    assert "Forensic Chain" in page.timeline_storyline_text()
 
 
 def test_desktop_page_empty_state_when_no_incidents() -> None:
@@ -415,3 +421,79 @@ def test_correlation_settings_window_is_configurable() -> None:
 
     # e1+e2 cluster (30s apart) -> 1 incident; e3 is 90s from cluster start -> alone.
     assert len(incidents) == 1
+
+
+def test_desktop_page_chronological_attack_timeline_ordering_and_deltas() -> None:
+    pytest.importorskip("PySide6", reason="desktop extra not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from aegis_desktop.app import create_application
+    from aegis_desktop.pages.incidents import IncidentsPage
+    from aegis_desktop.services.incidents import IncidentSnapshotView, collect_incident_view
+    from aegis_shared.risk import AnomalySignal
+
+    app = create_application([])
+    assert app is not None
+
+    t0 = _TS
+    t1 = _TS + timedelta(seconds=2)
+    t2 = _TS + timedelta(seconds=5)
+
+    f1 = _finding("e1", rule_id="PORT_SCAN_TCP", timestamp=t0)
+    f2 = _finding("e2", rule_id="SUSPICIOUS_EXEC_CMD", timestamp=t1)
+    f3 = _finding("e3", rule_id="NET_C2_BEACON", timestamp=t2)
+
+    incident = IncidentCorrelator().correlate([], [f1, f2, f3])[0]
+    anom = AnomalySignal(
+        source="unsupervised_autoencoder",
+        score=0.91,
+        confidence=0.85,
+        model_version="1.0.0",
+        reason="Divergent command payload",
+    )
+
+    def provider() -> IncidentSnapshotView:
+        return collect_incident_view(
+            incidents_provider=lambda: (incident,),
+            findings_provider=lambda: {f1.finding_id: f1, f2.finding_id: f2, f3.finding_id: f3},
+            events_provider=lambda: (),
+            anomalies_provider=lambda: {"e1": anom},
+        )
+
+    page = IncidentsPage(provider=provider)
+    page.refresh()
+    assert page.row_count() == 1
+
+    page.show_detail_for(page.row_at(0))
+
+    # Milestones should include: 3 findings + 1 ML anomaly + 1 correlation = 5 milestones
+    assert page.timeline_stage_count() == 5
+
+    # Storyline narrative should capture the sequence
+    story = page.timeline_storyline_text()
+    assert "RECONNAISSANCE" in story
+    assert "EXECUTION" in story
+    assert "COMMAND & CONTROL" in story
+    assert "ML ANOMALY" in story
+    assert "CORRELATION" in story
+
+    # Verify milestones in page._current_milestones
+    milestones = getattr(page, "_current_milestones", [])
+    assert len(milestones) == 5
+
+    # Check chronological ordering
+    timestamps = [m.timestamp for m in milestones]
+    assert timestamps == sorted(timestamps)
+
+    # First milestone should be Reconnaissance at t0
+    assert milestones[0].stage_category == "RECONNAISSANCE"
+    assert milestones[0].timestamp == t0
+
+    # Second milestone should be Execution at t1
+    assert milestones[1].stage_category == "EXECUTION"
+    assert milestones[1].timestamp == t1
+
+    # Third milestone should be C2 at t2
+    assert milestones[2].stage_category == "COMMAND & CONTROL"
+    assert milestones[2].timestamp == t2
+

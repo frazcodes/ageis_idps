@@ -1,0 +1,16 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": [
+    "shared",
+    "backend",
+    "agent",
+    "network-sensor",
+    "ml-engine",
+    "response-engine",
+    "desktop",
+    "runtime"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic"
+}

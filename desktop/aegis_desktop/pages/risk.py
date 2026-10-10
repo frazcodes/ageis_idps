@@ -191,8 +191,10 @@ class RiskTableModel(QAbstractTableModel):
 class RiskPage(BasePage):
     """Read-only table + detail view of explainable risk assessments."""
 
-    PAGE_KEY = "risk"
-    TITLE = "Risk"
+    PAGE_KEY  = "risk"
+    ICON       = "▲"
+    ICON_COLOR = "#EC4899"
+    TITLE     = "Risk"
     SUBTITLE = "Read-only inspection of explainable 0-100 risk assessments."
     EMPTY_STATE = ""
 

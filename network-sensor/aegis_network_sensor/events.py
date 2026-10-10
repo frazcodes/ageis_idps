@@ -59,6 +59,7 @@ def build_network_event(
             ip_version=record.ip_version,
             packet_length=record.packet_length,
             flow_id=record.flow_id,
+            domain=record.sni,
         ),
         "message": f"Network packet observed: {describe_packet(record)}",
     }

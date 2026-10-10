@@ -110,9 +110,21 @@ class MonitoringController:
         if self._runtime_factory is not None:
             return self._runtime_factory()
         # Imported lazily: opening the application must not load the runtime.
+        from pathlib import Path
+
+        from aegis_agent.config import AgentSettings
         from aegis_runtime import AegisRuntime
 
-        return AegisRuntime()
+        fim_candidates = ("pyproject.toml", "README.md", ".env.example", "pyrightconfig.json")
+        fim_paths = [str(Path(p).resolve()) for p in fim_candidates if Path(p).exists()]
+
+        settings = AgentSettings(
+            enable_process_monitor=True,
+            enable_port_monitor=True,
+            enable_file_integrity=bool(fim_paths),
+            file_integrity_paths=fim_paths,
+        )
+        return AegisRuntime(agent_settings=settings)
 
     def start(self) -> bool:
         """Start the runtime. Returns ``True`` on success, ``False`` on failure.

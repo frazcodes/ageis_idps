@@ -406,6 +406,17 @@ class PreflightDialog(QDialog):
 
     # -- Sequencing --------------------------------------------------------
 
+    def exec(self) -> int:
+        """Run the modal loop, starting the probe sequence on the way in.
+
+        The sequence is started here (not in ``__init__``) so probes only run
+        while the dialog is actually shown, and so any caller that simply does
+        ``PreflightDialog(...).exec()`` gets a dialog that advances, completes
+        and closes instead of hanging on pending checks.
+        """
+        self.start()
+        return super().exec()
+
     def start(self) -> None:
         """Begin the timed, one-probe-per-tick sequence (idempotent)."""
         if self._started:

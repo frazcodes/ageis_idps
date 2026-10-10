@@ -46,8 +46,10 @@ _INITIAL_HINT = (
 class SettingsPage(BasePage):
     """Read-only configuration and security posture page."""
 
-    PAGE_KEY = "settings"
-    TITLE = "Settings"
+    PAGE_KEY  = "settings"
+    ICON       = "⚙"
+    ICON_COLOR = "#94A3B8"
+    TITLE     = "Settings"
     SUBTITLE = "Read-only configuration and security posture of the Aegis components."
     EMPTY_STATE = ""
 
@@ -100,6 +102,34 @@ class SettingsPage(BasePage):
         self._sections_layout.setContentsMargins(0, 0, 0, 0)
         self._sections_layout.setSpacing(14)
         layout.addWidget(self._sections_container)
+
+        # Console Theme & Preferences Card
+        theme_card, theme_form = self._make_card("Console Appearance & Theme")
+        for k, v in (
+            ("Active Theme", "Elite Cyber Dark SOC (Hardware-Accelerated)"),
+            ("Color Space", "Deep Navy (#0A0F1C) / Neon Cyber Accents"),
+            ("Notification System", "Floating Multi-Stack Toasts (Top-Right HUD)"),
+            ("Diagnostics", "Automated Preflight System Check before Engine Start"),
+        ):
+            k_lbl = QLabel(k); k_lbl.setObjectName("FieldKey")
+            v_lbl = QLabel(v); v_lbl.setObjectName("FieldValue")
+            theme_form.addRow(k_lbl, v_lbl)
+        layout.addWidget(theme_card)
+
+        # Global Keyboard Shortcuts Card
+        sc_card, sc_form = self._make_card("Global Keyboard Shortcuts")
+        for k, v in (
+            ("Ctrl + 1 .. 9", "Instant Page Navigation (Dashboard \u2192 Response Center)"),
+            ("Ctrl + 0", "Jump to Settings & Configuration Console"),
+            ("Ctrl + M", "Start / Stop Intrusion Detection & Monitoring Engine"),
+            ("Ctrl + R / F5", "Refresh Active Console Telemetry & Snapshots"),
+            ("Ctrl + T", "Trigger Threat Simulation Playbook (Demo Mode)"),
+        ):
+            k_lbl = QLabel(k); k_lbl.setObjectName("FieldKey")
+            k_lbl.setStyleSheet("font-family: Consolas, monospace; font-weight: 700; color: #38BDF8;")
+            v_lbl = QLabel(v); v_lbl.setObjectName("FieldValue")
+            sc_form.addRow(k_lbl, v_lbl)
+        layout.addWidget(sc_card)
 
         layout.addStretch(1)
 

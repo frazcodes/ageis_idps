@@ -11,11 +11,14 @@ import contextlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtWidgets import (
+    QDialog,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QTableView,
@@ -24,8 +27,14 @@ from PySide6.QtWidgets import (
 )
 
 from aegis_desktop.pages.base import BasePage
-from aegis_desktop.pages.graphs import LineGraphWidget, RiskGaugeWidget
+from aegis_desktop.pages.graphs import (
+    LineGraphWidget,
+    MitreKillChainWidget,
+    RiskGaugeWidget,
+    TopologyRadarWidget,
+)
 from aegis_desktop.services.alerts import AlertService
+from aegis_desktop.services.audio_alert import get_audio_alert_service
 from aegis_desktop.services.dashboard import (
     INVENTORY_ERROR,
     DashboardSnapshot,
@@ -48,6 +57,12 @@ from aegis_desktop.theme import (
     TEXT_MUTED,
     WARN,
     set_state,
+)
+from aegis_desktop.threat_sim import (
+    SimulationOutcome,
+    ThreatSimulationDialog,
+    augment_snapshot,
+    run_scenario,
 )
 from aegis_shared.logging import get_logger
 
@@ -85,27 +100,32 @@ def _posture_card(
     frame = QFrame()
     frame.setObjectName("Card")
     frame.setStyleSheet(
-        f"QFrame#Card {{ border-left: 3px solid {accent_color}; }}"
+        f"QFrame#Card {{ background-color: #0E1726; border: 1px solid #1E293B; "
+        f"border-left: 4px solid {accent_color}; border-radius: 10px; }}"
     )
 
     outer = QVBoxLayout(frame)
     outer.setContentsMargins(18, 14, 18, 14)
-    outer.setSpacing(2)
+    outer.setSpacing(4)
 
     title_lbl = QLabel(title.upper())
     title_lbl.setObjectName("CardTitle")
+    title_lbl.setStyleSheet(
+        "font-size: 11px; font-weight: 700; color: #94A3B8; letter-spacing: 0.8px;"
+    )
     outer.addWidget(title_lbl)
 
     num_lbl = QLabel(number)
     num_lbl.setObjectName("PostureNumber")
     num_lbl.setStyleSheet(
-        f"font-size: 32px; font-weight: 800; color: {accent_color};"
+        f"font-size: 34px; font-weight: 800; color: {accent_color}; padding: 2px 0;"
     )
     outer.addWidget(num_lbl)
 
     sub_lbl = QLabel(subtitle)
     sub_lbl.setObjectName("CardHint")
     sub_lbl.setWordWrap(True)
+    sub_lbl.setStyleSheet("font-size: 12px; color: #64748B;")
     outer.addWidget(sub_lbl)
 
     btn: QPushButton | None = None
@@ -114,11 +134,11 @@ def _posture_card(
         btn.setObjectName("PostureButton")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setStyleSheet(
-            f"QPushButton {{ background-color: #2a3042; color: {TEXT_MUTED}; "
-            f"border: 1px solid {TEXT_MUTED}; border-radius: 4px; "
-            f"padding: 4px 10px; font-size: 11px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background-color: #363f56; color: #FFFFFF; "
-            f"border-color: {ACCENT}; }}"
+            "QPushButton { background-color: #1E293B; color: #E2E8F0; "
+            "border: 1px solid #334155; border-radius: 6px; "
+            "padding: 6px 14px; font-size: 12px; font-weight: 600; margin-top: 4px; }"
+            "QPushButton:hover { background-color: #2563EB; color: #FFFFFF; "
+            "border-color: #3B82F6; }"
         )
         outer.addWidget(btn)
 
@@ -156,6 +176,8 @@ class DashboardPage(BasePage):
     """Real-time Security Operations Console for Aegis IDPS."""
 
     PAGE_KEY = "dashboard"
+    ICON       = "◈"
+    ICON_COLOR = "#3B82F6"
     TITLE = "Security Operations"
     SUBTITLE = (
         "Real-time SOC console: security posture, live network activity, "
@@ -210,6 +232,8 @@ class DashboardPage(BasePage):
         self._security_graph: LineGraphWidget | None = None
         self._risk_graph: LineGraphWidget | None = None
         self._risk_gauge: RiskGaugeWidget | None = None
+        self._mitre_widget: MitreKillChainWidget | None = None
+        self._topology_radar: TopologyRadarWidget | None = None
         self._alert_container: QWidget | None = None
         self._alert_service = alert_service or AlertService()
         self._telemetry_history = telemetry_history or TelemetryHistory()
@@ -218,15 +242,21 @@ class DashboardPage(BasePage):
 
         self._live_network = live_network or LiveNetworkActivity()
         self._live_network_model: LiveNetworkTableModel | None = None
+        self._live_network_proxy: QSortFilterProxyModel | None = None
+        self._live_network_filter: QLineEdit | None = None
         self._findings_container: QWidget | None = None
         self._incidents_container: QWidget | None = None
         self._explanation_container: QWidget | None = None
         self._relationships_container: QWidget | None = None
         self._network_summary_labels: dict[str, QLabel] = {}
         self._main_window: object | None = None
+        self._simulation_dialog: ThreatSimulationDialog | None = None
 
         # Unified Threat Investigation Feed
         self._threat_feed_layout: QVBoxLayout | None = None
+        self._selected_mitre_tactic: str | None = None
+        self._threat_feed_filter_badge: QLabel | None = None
+        self._threat_feed_clear_btn: QPushButton | None = None
 
         super().__init__(parent)
         self.refresh()
@@ -239,8 +269,9 @@ class DashboardPage(BasePage):
 
     def _navigate_to(self, key: str, **kwargs: object) -> None:
         """Navigate to a page via the MainWindow, if available."""
-        if self._main_window is not None:
-            self._main_window.navigate_to(key, **kwargs)
+        nav = getattr(self._main_window, "navigate_to", None)
+        if callable(nav):
+            nav(key, **kwargs)
 
     # -- Construction ------------------------------------------------------
 
@@ -281,6 +312,10 @@ class DashboardPage(BasePage):
         )
         self._posture_risk_num = risk_num
         self._posture_risk_sub = risk_sub
+        self._risk_gauge = RiskGaugeWidget()
+        rf_lay = risk_frame.layout()
+        if rf_lay is not None:
+            rf_lay.addWidget(self._risk_gauge)
         posture_row.addWidget(risk_frame, 1)
 
         threat_frame, threat_num, threat_sub, _ = _posture_card(
@@ -306,8 +341,42 @@ class DashboardPage(BasePage):
 
         layout.addLayout(posture_row)
 
-        # --- Unified Threat Investigation Feed ----------------------------
-        layout.addWidget(self._make_section_label("ACTIVE THREAT INVESTIGATION FEED"))
+        # --- MITRE ATT&CK Kill-Chain Progression --------------------------
+        layout.addWidget(self._make_section_label("MITRE ATT&CK KILL-CHAIN PROGRESSION"))
+        self._mitre_widget = MitreKillChainWidget()
+        self._mitre_widget.tactic_selected.connect(self._on_mitre_tactic_selected)
+        layout.addWidget(self._mitre_widget)
+
+        # --- Threat Feed (left 65%) + Live Topology Radar (right 35%) -----
+        mid_row = QHBoxLayout()
+        mid_row.setSpacing(14)
+
+        feed_col = QVBoxLayout()
+        feed_col.setSpacing(6)
+        feed_hdr_row = QHBoxLayout()
+        feed_hdr_row.addWidget(self._make_section_label("ACTIVE THREAT INVESTIGATION FEED"))
+        feed_hdr_row.addStretch(1)
+
+        self._threat_feed_filter_badge = QLabel("")
+        self._threat_feed_filter_badge.setVisible(False)
+        self._threat_feed_filter_badge.setStyleSheet(
+            "background-color: rgba(56, 189, 248, 0.15); color: #38BDF8; "
+            "border: 1px solid #38BDF8; border-radius: 4px; "
+            "padding: 2px 8px; font-size: 11px; font-weight: bold;"
+        )
+        self._threat_feed_clear_btn = QPushButton("✕ Clear Filter")
+        self._threat_feed_clear_btn.setVisible(False)
+        self._threat_feed_clear_btn.setFixedHeight(22)
+        self._threat_feed_clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._threat_feed_clear_btn.setStyleSheet(
+            "QPushButton { background: transparent; color: #94A3B8; font-size: 11px; "
+            "border: 1px solid #334155; border-radius: 4px; padding: 0 6px; } "
+            "QPushButton:hover { background: #1E293B; color: #F1F5F9; border-color: #475569; }"
+        )
+        self._threat_feed_clear_btn.clicked.connect(self._clear_mitre_filter)
+        feed_hdr_row.addWidget(self._threat_feed_filter_badge)
+        feed_hdr_row.addWidget(self._threat_feed_clear_btn)
+        feed_col.addLayout(feed_hdr_row)
         self._threat_feed_container = QFrame()
         self._threat_feed_container.setObjectName("Card")
         self._threat_feed_inner = QVBoxLayout(self._threat_feed_container)
@@ -316,16 +385,51 @@ class DashboardPage(BasePage):
         self._threat_feed_layout = self._threat_feed_inner
         self._threat_feed_scroll = QScrollArea()
         self._threat_feed_scroll.setWidgetResizable(True)
-        self._threat_feed_scroll.setMinimumHeight(200)
-        self._threat_feed_scroll.setMaximumHeight(420)
+        self._threat_feed_scroll.setMinimumHeight(235)
+        self._threat_feed_scroll.setMaximumHeight(350)
         self._threat_feed_scroll.setWidget(self._threat_feed_container)
-        layout.addWidget(self._threat_feed_scroll)
+        feed_col.addWidget(self._threat_feed_scroll)
+        mid_row.addLayout(feed_col, 11)
 
-        # --- Live Network Activity Table ---
-        layout.addWidget(self._make_section_label("LIVE NETWORK ACTIVITY"))
+        radar_col = QVBoxLayout()
+        radar_col.setSpacing(6)
+        radar_col.addWidget(self._make_section_label("NETWORK TOPOLOGY & ATTACK SURFACE"))
+        self._topology_radar = TopologyRadarWidget()
+        self._topology_radar.setMinimumHeight(235)
+        self._topology_radar.setMaximumHeight(350)
+        radar_col.addWidget(self._topology_radar)
+        mid_row.addLayout(radar_col, 9)
+
+        layout.addLayout(mid_row)
+
+        # --- Live Network Activity Table + SIEM Filter Bar ----------------
+        net_hdr_row = QHBoxLayout()
+        net_hdr_row.setSpacing(12)
+        net_hdr_row.addWidget(self._make_section_label("LIVE NETWORK ACTIVITY"))
+        net_hdr_row.addStretch(1)
+        self._live_network_filter = QLineEdit()
+        self._live_network_filter.setPlaceholderText(
+            "Filter live flows (IP, Port, TCP/UDP, inbound/outbound)..."
+        )
+        self._live_network_filter.setFixedWidth(340)
+        net_hdr_row.addWidget(self._live_network_filter)
+        layout.addLayout(net_hdr_row)
+
         self._live_network_model = LiveNetworkTableModel(self)
+        self._live_network_proxy = QSortFilterProxyModel(self)
+        self._live_network_proxy.setSourceModel(self._live_network_model)
+        self._live_network_proxy.setFilterCaseSensitivity(
+            Qt.CaseSensitivity.CaseInsensitive
+        )
+        self._live_network_proxy.setFilterKeyColumn(-1)
+        self._live_network_Proxy_sort = self._live_network_proxy
+        self._live_network_proxy.setSortRole(Qt.ItemDataRole.UserRole)
+        self._live_network_filter.textChanged.connect(
+            self._live_network_proxy.setFilterFixedString
+        )
+
         self._live_network_table = QTableView()
-        self._live_network_table.setModel(self._live_network_model)
+        self._live_network_table.setModel(self._live_network_proxy)
         self._live_network_table.setSortingEnabled(True)
         self._live_network_table.setAlternatingRowColors(True)
         self._live_network_table.setSelectionBehavior(
@@ -336,8 +440,9 @@ class DashboardPage(BasePage):
         )
         self._live_network_table.verticalHeader().setVisible(False)
         self._live_network_table.horizontalHeader().setStretchLastSection(True)
-        self._live_network_table.setMinimumHeight(140)
-        self._live_network_table.setMaximumHeight(200)
+        self._live_network_table.horizontalHeader().setSectionsMovable(True)
+        self._live_network_table.setMinimumHeight(150)
+        self._live_network_table.setMaximumHeight(220)
         for idx, width in enumerate(_PORT_WIDTHS):
             self._live_network_table.setColumnWidth(idx, width)
         layout.addWidget(self._live_network_table)
@@ -360,14 +465,14 @@ class DashboardPage(BasePage):
         layout.addLayout(net_summary_row)
 
         # --- Contextual Telemetry graphs (bottom section) ---
-        layout.addWidget(self._make_section_label("CONTEXTUAL TELEMETRY"))
+        layout.addWidget(self._make_section_label("CONTEXTUAL TELEMETRY & RISK TRENDS"))
         graphs_row = QHBoxLayout()
-        graphs_row.setSpacing(12)
+        graphs_row.setSpacing(14)
         self._network_graph = LineGraphWidget(
             title="NETWORK THROUGHPUT",
             series_configs=(("Packets", ACCENT), ("Bytes", INFO)),
         )
-        self._network_graph.setMinimumHeight(110)
+        self._network_graph.setMinimumHeight(140)
         graphs_row.addWidget(self._network_graph, 1)
         self._security_graph = LineGraphWidget(
             title="SECURITY EVENTS",
@@ -377,8 +482,14 @@ class DashboardPage(BasePage):
                 ("Incidents", CRITICAL),
             ),
         )
-        self._security_graph.setMinimumHeight(110)
+        self._security_graph.setMinimumHeight(140)
         graphs_row.addWidget(self._security_graph, 1)
+        self._risk_graph = LineGraphWidget(
+            title="RISK SCORE TREND",
+            series_configs=(("Risk Score", HIGH),),
+        )
+        self._risk_graph.setMinimumHeight(140)
+        graphs_row.addWidget(self._risk_graph, 1)
         layout.addLayout(graphs_row)
 
         # --- Hidden legacy containers (backward-compat for tests) ----------
@@ -417,15 +528,8 @@ class DashboardPage(BasePage):
         self._relationships_container.setVisible(False)
 
         # Hidden risk/alerts row + host/network cards (for property accessors)
-        self._risk_gauge = RiskGaugeWidget()
-        self._risk_gauge.setVisible(False)
         self._risk_context_label = QLabel("")
         self._risk_context_label.setVisible(False)
-        self._risk_graph = LineGraphWidget(
-            title="RISK TREND",
-            series_configs=(("Risk Score", HIGH),),
-        )
-        self._risk_graph.setVisible(False)
         self._alert_container = QWidget()
         self._alert_layout = QVBoxLayout(self._alert_container)
         self._alert_layout.setContentsMargins(0, 0, 0, 0)
@@ -453,12 +557,24 @@ class DashboardPage(BasePage):
     def _build_toolbar(self) -> QHBoxLayout:
         toolbar = QHBoxLayout()
         toolbar.setSpacing(12)
+        self._simulate_button = QPushButton("\U0001f9ea Simulate Threat")
+        self._simulate_button.setObjectName("WarningButton")
+        self._simulate_button.setToolTip("Run a synthetic attack playbook (demo mode)")
+        self._simulate_button.clicked.connect(self.open_threat_simulation)
         self._refresh_button = QPushButton("Refresh")
         self._refresh_button.setObjectName("PrimaryButton")
         self._refresh_button.clicked.connect(self.refresh)
-        self._last_updated_label = QLabel("Last updated: \u2014")
+        self._export_button = QPushButton("📄 Export SOC Brief")
+        self._export_button.setObjectName("SecondaryButton")
+        self._export_button.setToolTip(
+            "Export comprehensive SOC incident & security posture report"
+        )
+        self._export_button.clicked.connect(self.export_soc_report)
+        self._last_updated_label = QLabel("Last updated: —")
         self._last_updated_label.setObjectName("CardHint")
+        toolbar.addWidget(self._simulate_button)
         toolbar.addWidget(self._refresh_button)
+        toolbar.addWidget(self._export_button)
         toolbar.addWidget(self._last_updated_label)
         toolbar.addStretch(1)
         return toolbar
@@ -512,48 +628,163 @@ class DashboardPage(BasePage):
     )
 
     def _build_health_bar(self) -> QFrame:
-        """Single-line horizontal bar with dot indicators and compact text."""
+        """Top Hero 'Security Shield & Threat Defense Command Banner'."""
         bar = QFrame()
-        bar.setObjectName("HealthBar")
+        bar.setObjectName("HeroShieldBanner")
+        self._hero_banner = bar
         bar.setStyleSheet(
-            f"QFrame#HealthBar {{ background-color: #1a1f2e; "
-            f"border: 1px solid {TEXT_MUTED}; border-radius: 6px; }}"
+            "QFrame#HeroShieldBanner {"
+            "  background: qlineargradient("
+            "    x1:0, y1:0, x2:1, y2:0,"
+            "    stop:0 #0B132B, stop:0.35 #0F1D36, stop:0.7 #0F233D, stop:1 #0B132B"
+            "  );"
+            "  border: 1px solid rgba(56, 189, 248, 0.35);"
+            "  border-radius: 12px;"
+            "}"
         )
-        h = QHBoxLayout(bar)
-        h.setContentsMargins(14, 6, 14, 6)
-        h.setSpacing(18)
 
-        title = QLabel("SYSTEM HEALTH")
-        title.setObjectName("CardTitle")
-        title.setStyleSheet(
-            f"font-size: 11px; font-weight: 700; color: {TEXT_MUTED};"
+        root_h = QHBoxLayout(bar)
+        root_h.setContentsMargins(18, 14, 18, 14)
+        root_h.setSpacing(16)
+
+        # 1. Left: Holographic Shield Icon Box
+        icon_box = QFrame()
+        icon_box.setObjectName("HeroShieldIconBox")
+        icon_box.setFixedSize(50, 50)
+        icon_box.setStyleSheet(
+            "QFrame#HeroShieldIconBox {"
+            "  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1E293B, stop:1 #0F172A);"
+            "  border: 1px solid #38BDF8;"
+            "  border-radius: 10px;"
+            "}"
         )
-        h.addWidget(title)
+        self._hero_shield_icon_box = icon_box
+        ib_lay = QVBoxLayout(icon_box)
+        ib_lay.setContentsMargins(0, 0, 0, 0)
+        self._hero_shield_icon = QLabel("🛡️")
+        self._hero_shield_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._hero_shield_icon.setStyleSheet("font-size: 24px; background: transparent;")
+        ib_lay.addWidget(self._hero_shield_icon)
+        root_h.addWidget(icon_box)
 
-        h.addSpacing(6)
+        # 2. Status Titles & Telemetry Chips
+        title_col = QVBoxLayout()
+        title_col.setContentsMargins(0, 0, 0, 0)
+        title_col.setSpacing(4)
 
-        self._health_indicators: dict[str, tuple[QLabel, QLabel]] = {}
+        self._hero_status_title = QLabel("● SYSTEM PROTECTED  ·  ALL DEFENSE SHIELDS ARMED")
+        self._hero_status_title.setObjectName("HeroStatusTitle")
+        self._hero_status_title.setStyleSheet(
+            "font-size: 14px; font-weight: 800; color: #10B981; letter-spacing: 0.6px;"
+        )
+        title_col.addWidget(self._hero_status_title)
+
+        self._hero_status_subtitle = QLabel(
+            "Hybrid Host & Network IDPS actively inspecting live packets, processes & files"
+        )
+        self._hero_status_subtitle.setStyleSheet("font-size: 11px; color: #94A3B8;")
+        title_col.addWidget(self._hero_status_subtitle)
+
+        # Telemetry Pill Chips Row
+        pills_row = QHBoxLayout()
+        pills_row.setSpacing(8)
+
+        self._hero_pill_host = QLabel("🖥️ Host: Local Host")
+        self._hero_pill_host.setStyleSheet(
+            "background: rgba(30, 41, 59, 0.85); border: 1px solid #334155; "
+            "border-radius: 8px; padding: 2px 8px; font-size: 10px; "
+            "font-weight: 600; color: #E2E8F0;"
+        )
+        pills_row.addWidget(self._hero_pill_host)
+
+        self._hero_pill_threats = QLabel("🛡️ Zero Active Threats")
+        self._hero_pill_threats.setStyleSheet(
+            "background: rgba(16, 185, 129, 0.15); border: 1px solid #10B981; "
+            "border-radius: 8px; padding: 2px 8px; font-size: 10px; "
+            "font-weight: 600; color: #6EE7B7;"
+        )
+        pills_row.addWidget(self._hero_pill_threats)
+
+        pills_row.addStretch(1)
+        title_col.addLayout(pills_row)
+
+        root_h.addLayout(title_col, 5)
+
+        # 3. Middle: Core Component Micro Indicators
+        comp_frame = QFrame()
+        comp_frame.setStyleSheet("background: transparent; border: none;")
+        comp_lay = QVBoxLayout(comp_frame)
+        comp_lay.setContentsMargins(0, 0, 0, 0)
+        comp_lay.setSpacing(4)
+
+        comp_title = QLabel("DEFENSE ENGINE SENSORS")
+        comp_title.setStyleSheet(
+            "font-size: 9px; font-weight: 800; color: #64748B; letter-spacing: 0.6px;"
+        )
+        comp_lay.addWidget(comp_title)
+
+        chips_grid = QHBoxLayout()
+        chips_grid.setSpacing(10)
+
+        self._health_indicators = {}
         for display_name, key in self._HEALTH_ITEMS:
-            dot = QLabel("\u25cf")
+            col_box = QHBoxLayout()
+            col_box.setSpacing(4)
+
+            dot = QLabel("●")
             dot.setObjectName(f"dot_{key}")
-            dot.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px;")
-            dot.setFixedWidth(12)
+            dot.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 9px;")
             dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            text = QLabel(f"{display_name}: {_EMPTY}")
+            text = QLabel(f"{display_name}")
             text.setObjectName(f"health_{key}")
-            text.setStyleSheet(f"font-size: 11px; color: {TEXT_MUTED};")
+            text.setStyleSheet(f"font-size: 10px; color: {TEXT_MUTED};")
 
-            h.addWidget(dot)
-            h.addWidget(text)
-            h.addSpacing(4)
+            col_box.addWidget(dot)
+            col_box.addWidget(text)
+            chips_grid.addLayout(col_box)
 
             self._health_indicators[key] = (dot, text)
+
+        comp_lay.addLayout(chips_grid)
+        root_h.addWidget(comp_frame, 4)
+
+        # 4. Right: Health Score Gauge Box
+        gauge_box = QFrame()
+        gauge_box.setObjectName("HeroGaugeBox")
+        gauge_box.setStyleSheet(
+            "QFrame#HeroGaugeBox {"
+            "  background: rgba(15, 23, 42, 0.7);"
+            "  border: 1px solid #334155;"
+            "  border-radius: 10px;"
+            "  padding: 4px 14px;"
+            "}"
+        )
+        gb_lay = QVBoxLayout(gauge_box)
+        gb_lay.setContentsMargins(10, 6, 10, 6)
+        gb_lay.setSpacing(1)
+        gb_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        t_lbl = QLabel("SYSTEM INTEGRITY")
+        t_lbl.setStyleSheet(
+            "font-size: 9px; font-weight: 800; color: #64748B; letter-spacing: 0.6px;"
+        )
+        t_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        gb_lay.addWidget(t_lbl)
+
+        self._hero_health_score = QLabel("100%")
+        self._hero_health_score.setStyleSheet(
+            "font-size: 22px; font-weight: 900; color: #10B981;"
+        )
+        self._hero_health_score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        gb_lay.addWidget(self._hero_health_score)
+
+        root_h.addWidget(gauge_box, 2)
 
         return bar
 
     def _update_health_bar(self) -> None:
-        """Sync the compact health bar indicators from hidden monitor labels."""
+        """Sync the hero security banner and health indicators from live telemetry."""
         for key, (dot, text) in self._health_indicators.items():
             status = self._monitor_labels[key].text()
             display_name = next(
@@ -561,23 +792,132 @@ class DashboardPage(BasePage):
             )
             active = status in ("ACTIVE", "MONITOR (read-only)")
             color = OK if active else WARN if status in ("DISABLED",) else HIGH
-            dot.setStyleSheet(f"color: {color}; font-size: 10px;")
-            text.setText(f"{display_name}: {status}")
-            text.setStyleSheet(f"font-size: 11px; color: {TEXT_MUTED};")
+            dot.setStyleSheet(f"color: {color}; font-size: 9px;")
+            text.setText(f"{display_name}")
+            text.setToolTip(f"{display_name}: {status}")
+
+        snapshot = self._snapshot
+        risk_score = 0
+        high_findings = 0
+        active_incidents = 0
+        hostname = "Local Host"
+
+        if snapshot is not None:
+            if snapshot.risk.latest_score is not None:
+                risk_score = snapshot.risk.latest_score
+            high_findings = sum(
+                1 for item in snapshot.high_risk_findings
+                if item.severity in ("high", "critical")
+            )
+            active_incidents = sum(
+                1 for item in snapshot.activity
+                if item.kind == "incident"
+            )
+            if snapshot.inventory.hostname:
+                hostname = snapshot.inventory.hostname
+
+        health_pct = max(0, min(100, 100 - risk_score))
+        self._hero_health_score.setText(f"{health_pct}%")
+        self._hero_pill_host.setText(f"🖥️ Host: {hostname}")
+
+        is_under_attack = (high_findings > 0) or (risk_score >= 60) or (active_incidents > 0)
+
+        if is_under_attack:
+            self._hero_banner.setStyleSheet(
+                "QFrame#HeroShieldBanner {"
+                "  background: qlineargradient("
+                "    x1:0, y1:0, x2:1, y2:0,"
+                "    stop:0 #2A080C, stop:0.5 #3B0D13, stop:1 #2A080C"
+                "  );"
+                "  border: 1px solid #EF4444;"
+                "  border-radius: 12px;"
+                "}"
+            )
+            self._hero_shield_icon_box.setStyleSheet(
+                "QFrame#HeroShieldIconBox {"
+                "  background: #450A0A; border: 1px solid #EF4444; border-radius: 10px;"
+                "}"
+            )
+            self._hero_shield_icon.setText("🚨")
+            self._hero_status_title.setText("● THREAT DETECTED  ·  ACTIVE EXPLOIT MITIGATION")
+            self._hero_status_title.setStyleSheet(
+                "font-size: 14px; font-weight: 800; color: #EF4444; letter-spacing: 0.6px;"
+            )
+            self._hero_status_subtitle.setText(
+                f"Security engine detected {high_findings} high-severity finding(s) "
+                f"and {active_incidents} incident(s)."
+            )
+            self._hero_pill_threats.setText(
+                f"⚠️ {high_findings} Threats | {active_incidents} Incidents"
+            )
+            self._hero_pill_threats.setStyleSheet(
+                "background: rgba(239, 68, 68, 0.2); border: 1px solid #EF4444; "
+                "border-radius: 8px; padding: 2px 8px; font-size: 10px; "
+                "font-weight: 700; color: #FCA5A5;"
+            )
+            self._hero_health_score.setStyleSheet(
+                "font-size: 22px; font-weight: 900; color: #EF4444;"
+            )
+        else:
+            self._hero_banner.setStyleSheet(
+                "QFrame#HeroShieldBanner {"
+                "  background: qlineargradient("
+                "    x1:0, y1:0, x2:1, y2:0,"
+                "    stop:0 #0B132B, stop:0.35 #0F1D36, stop:0.7 #0F233D, stop:1 #0B132B"
+                "  );"
+                "  border: 1px solid rgba(56, 189, 248, 0.35);"
+                "  border-radius: 12px;"
+                "}"
+            )
+            self._hero_shield_icon_box.setStyleSheet(
+                "QFrame#HeroShieldIconBox {"
+                "  background: qlineargradient("
+                "    x1:0, y1:0, x2:1, y2:1, stop:0 #1E293B, stop:1 #0F172A"
+                "  );"
+                "  border: 1px solid #38BDF8;"
+                "  border-radius: 10px;"
+                "}"
+            )
+            self._hero_shield_icon.setText("🛡️")
+            self._hero_status_title.setText("● SYSTEM PROTECTED  ·  ALL DEFENSE SHIELDS ARMED")
+            self._hero_status_title.setStyleSheet(
+                "font-size: 14px; font-weight: 800; color: #10B981; letter-spacing: 0.6px;"
+            )
+            self._hero_status_subtitle.setText(
+                "Hybrid Host & Network IDPS actively inspecting live packets, processes & files"
+            )
+            self._hero_pill_threats.setText("🛡️ Zero Active Threats")
+            self._hero_pill_threats.setStyleSheet(
+                "background: rgba(16, 185, 129, 0.15); border: 1px solid #10B981; "
+                "border-radius: 8px; padding: 2px 8px; font-size: 10px; "
+                "font-weight: 600; color: #6EE7B7;"
+            )
+            self._hero_health_score.setStyleSheet(
+                "font-size: 22px; font-weight: 900; color: #10B981;"
+            )
 
     @staticmethod
     def _metric_card(label: str) -> tuple[QFrame, QLabel]:
         card = QFrame()
         card.setObjectName("Card")
+        card.setStyleSheet(
+            "QFrame#Card { background-color: #0E1726; border: 1px solid #1E293B; "
+            "border-radius: 8px; }"
+            "QFrame#Card:hover { border-color: #3B82F6; }"
+        )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(2)
+        layout.setSpacing(3)
         title = QLabel(label.upper())
         title.setObjectName("CardTitle")
+        title.setStyleSheet(
+            "font-size: 10px; font-weight: 700; color: #94A3B8; letter-spacing: 0.6px;"
+        )
+        layout.addWidget(title)
         value = QLabel(_EMPTY)
         value.setObjectName("CardValue")
+        value.setStyleSheet("font-size: 20px; font-weight: 800; color: #F8FAFC;")
         value.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(title)
         layout.addWidget(value)
         return card, value
 
@@ -585,6 +925,10 @@ class DashboardPage(BasePage):
     def _make_section_label(text: str) -> QLabel:
         label = QLabel(text)
         label.setObjectName("CardTitle")
+        label.setStyleSheet(
+            "font-size: 11px; font-weight: 800; color: #94A3B8; "
+            "letter-spacing: 1px; padding: 6px 0 2px 0;"
+        )
         return label
 
     # -- Host card ---------------------------------------------------------
@@ -657,7 +1001,7 @@ class DashboardPage(BasePage):
     def refresh(self) -> DashboardSnapshot | None:
         """Re-read all read-only data from existing Aegis components."""
         try:
-            snapshot = self._provider()
+            snapshot = augment_snapshot(self._provider())
         except Exception as exc:
             logger.warning("Dashboard refresh failed: %s", exc)
             self._show_error(INVENTORY_ERROR)
@@ -668,7 +1012,7 @@ class DashboardPage(BasePage):
     def refresh_live(self) -> None:
         """Called on every QTimer tick while monitoring is active."""
         try:
-            snapshot = self._provider()
+            snapshot = augment_snapshot(self._provider())
         except Exception:
             return
         self._snapshot = snapshot
@@ -678,12 +1022,263 @@ class DashboardPage(BasePage):
         self._update_health_bar()
         self._update_threat_feed(snapshot)
         self._update_live_network(snapshot)
+        self._update_mitre_and_topology(snapshot)
         self._update_graphs()
         self._update_network_summary(snapshot)
         if snapshot.inventory.available:
             self._set_error(None)
         self._last_updated_label.setText(
             f"Last updated: {format_timestamp(snapshot.collected_at)}",
+        )
+
+    # -- Threat simulation (demo mode) --------------------------------------
+
+    @property
+    def simulate_button(self) -> QPushButton:
+        """Toolbar button that opens the threat simulation playbook dialog."""
+        return self._simulate_button
+
+    @property
+    def simulation_dialog(self) -> ThreatSimulationDialog | None:
+        """The playbook dialog that is currently open, or ``None``."""
+        return self._simulation_dialog
+
+    def open_threat_simulation(self) -> SimulationOutcome | None:
+        """Show the playbook dialog, inject the chosen scenario, then refresh.
+
+        Cancelling leaves the console untouched. A run injects synthetic
+        findings through the existing alert and correlation services and then
+        repaints the Threat Feed, Security Posture row and alert list through
+        the normal refresh path.
+        """
+        dialog = ThreatSimulationDialog(self)
+        self._simulation_dialog = dialog
+        dialog.exec()
+        accepted = dialog.result() == QDialog.DialogCode.Accepted
+        self._simulation_dialog = None
+        if not accepted:
+            return None
+        outcome = run_scenario(dialog.selected_key(), alert_service=self._alert_service)
+        self._refresh_after_simulation()
+        return outcome
+
+    def export_soc_report(self) -> str | None:
+        """Export comprehensive SOC security incident & posture brief as HTML/PDF report."""
+        snapshot = self._snapshot or augment_snapshot(self._provider())
+        ts_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        default_name = f"aegis_soc_incident_brief_{ts_str}.html"
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save SOC Incident Brief",
+            default_name,
+            "HTML Report (*.html);;All Files (*.*)",
+        )
+        if not path:
+            return None
+
+        # Build clean, high-grade cyber SOC executive report HTML
+        risk_score = (
+            snapshot.risk.latest_score if snapshot.risk.latest_score is not None else "N/A"
+        )
+        risk_level = (snapshot.risk.latest_level or "NORMAL").upper()
+        high_findings = [
+            f for f in snapshot.high_risk_findings if f.severity in ("high", "critical")
+        ]
+        incidents = [a for a in snapshot.activity if a.kind == "incident"]
+
+        findings_rows = []
+        for f in high_findings[:20]:
+            ts = format_timestamp(f.timestamp)
+            findings_rows.append(
+                f"<tr><td><b>{f.severity.upper()}</b></td><td>{f.description}</td><td>{ts}</td></tr>"
+            )
+        findings_html = "".join(findings_rows) or (
+            "<tr><td colspan='3'>Zero critical findings detected.</td></tr>"
+        )
+
+        incidents_rows = []
+        for inc in incidents[:20]:
+            ts = format_timestamp(inc.timestamp)
+            incidents_rows.append(
+                f"<tr><td><b>{inc.severity.upper()}</b></td>"
+                f"<td>{inc.description}</td><td>{ts}</td></tr>"
+            )
+        incidents_html = "".join(incidents_rows) or (
+            "<tr><td colspan='3'>Zero active incidents.</td></tr>"
+        )
+
+        gen_ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+        risk_badge_color = "#EF4444" if risk_level in ("CRITICAL", "HIGH") else "#10B981"
+        host_name = snapshot.inventory.hostname or "localhost"
+        host_os = snapshot.inventory.operating_system or "Unknown OS"
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Aegis IDPS — SOC Incident & Posture Brief</title>
+<style>
+  body {{
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0B0F19;
+    color: #E2E8F0;
+    padding: 30px;
+    margin: 0;
+  }}
+  .header {{
+    border-bottom: 2px solid #2563EB;
+    padding-bottom: 15px;
+    margin-bottom: 25px;
+  }}
+  .title {{
+    font-size: 24px;
+    font-weight: 800;
+    color: #38BDF8;
+    letter-spacing: 1px;
+  }}
+  .sub {{
+    font-size: 13px;
+    color: #94A3B8;
+    margin-top: 4px;
+  }}
+  .badge-grid {{
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+  }}
+  .card {{
+    background: #0E1726;
+    border: 1px solid #1E293B;
+    border-radius: 8px;
+    padding: 15px;
+    flex: 1;
+  }}
+  .card-title {{
+    font-size: 11px;
+    font-weight: 700;
+    color: #94A3B8;
+    letter-spacing: 0.5px;
+  }}
+  .card-val {{
+    font-size: 28px;
+    font-weight: 800;
+    color: #38BDF8;
+    margin: 6px 0;
+  }}
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    background: #0E1726;
+    border-radius: 8px;
+    overflow: hidden;
+  }}
+  th, td {{
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid #1E293B;
+    font-size: 13px;
+  }}
+  th {{
+    background: #1E293B;
+    color: #94A3B8;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+  }}
+  .section {{
+    margin-top: 30px;
+  }}
+  .section-h {{
+    font-size: 14px;
+    font-weight: 800;
+    color: #F1F5F9;
+    letter-spacing: 0.8px;
+    border-left: 3px solid #38BDF8;
+    padding-left: 10px;
+    margin-bottom: 12px;
+  }}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">AEGIS INTRUSION DEFENSE SYSTEM</div>
+    <div class="sub">Executive SOC Incident Brief & Threat Audit  ·  Generated: {gen_ts}</div>
+  </div>
+
+  <div class="badge-grid">
+    <div class="card">
+      <div class="card-title">GLOBAL RISK SCORE</div>
+      <div class="card-val" style="color: {risk_badge_color};">{risk_score} / 100</div>
+      <div class="sub">Level: {risk_level}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">HIGH/CRITICAL THREATS</div>
+      <div class="card-val">{len(high_findings)}</div>
+      <div class="sub">{snapshot.detection.finding_count} Total Findings</div>
+    </div>
+    <div class="card">
+      <div class="card-title">ACTIVE INCIDENTS</div>
+      <div class="card-val">{len(incidents)}</div>
+      <div class="sub">{snapshot.event_count} Events Monitored</div>
+    </div>
+    <div class="card">
+      <div class="card-title">HOST MONITORED</div>
+      <div class="card-val" style="font-size: 20px; line-height: 38px;">{host_name}</div>
+      <div class="sub">{host_os}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-h">HIGH & CRITICAL DETECTION FINDINGS</div>
+    <table>
+      <thead><tr><th>Severity</th><th>Description</th><th>Timestamp</th></tr></thead>
+      <tbody>{findings_html}</tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-h">CORRELATED SECURITY INCIDENTS</div>
+    <table>
+      <thead><tr><th>Severity</th><th>Incident Summary</th><th>Timestamp</th></tr></thead>
+      <tbody>{incidents_html}</tbody>
+    </table>
+  </div>
+</body>
+</html>
+"""
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+            msg = getattr(self._main_window, "show_toast", None)
+            if callable(msg):
+                msg("SOC Report Exported", f"Saved successfully to {path}", "success", 4000)
+            return path
+        except Exception as exc:
+            logger.warning("Failed to export SOC report: %s", exc)
+            return None
+
+    def _refresh_after_simulation(self) -> None:
+        """Repaint the views a simulated attack feeds, without a full rebuild."""
+        try:
+            snapshot = augment_snapshot(self._provider())
+        except Exception as exc:
+            logger.warning("Dashboard refresh after simulation failed: %s", exc)
+            return
+        self._snapshot = snapshot
+        self._detect_alerts(snapshot)
+        # Sound cyber alarm tone for simulated attack
+        get_audio_alert_service().play_alarm(duration_seconds=15.0)
+        self._update_posture_cards(snapshot)
+        self._update_threat_feed(snapshot)
+        self._update_mitre_and_topology(snapshot)
+        self._update_alert_display()
+        self._update_health_bar()
+        if snapshot.inventory.available:
+            self._set_error(None)
+        self._last_updated_label.setText(
+            f"Last updated: {format_timestamp(snapshot.collected_at)}"
         )
 
     def _apply(self, snapshot: DashboardSnapshot) -> None:
@@ -774,6 +1369,8 @@ class DashboardPage(BasePage):
 
         # Initial posture card update
         self._update_posture_cards(snapshot)
+        self._update_mitre_and_topology(snapshot)
+        self._update_threat_feed(snapshot)
         self._update_health_bar()
 
         if inventory.available:
@@ -781,6 +1378,73 @@ class DashboardPage(BasePage):
         else:
             self._set_error(inventory.error or INVENTORY_ERROR)
         self._last_updated_label.setText(f"Last updated: {format_timestamp(snapshot.collected_at)}")
+
+    def _update_mitre_and_topology(self, snapshot: DashboardSnapshot) -> None:
+        """Update the MITRE ATT&CK kill-chain strip and topology radar."""
+        counts: dict[str, int] = {
+            "TA0043": 0,
+            "TA0001": 0,
+            "TA0002": 0,
+            "TA0003": 0,
+            "TA0011": 0,
+            "TA0010": 0,
+        }
+        texts: list[str] = [item.description.lower() for item in snapshot.high_risk_findings]
+        texts.extend(
+            item.description.lower()
+            for item in snapshot.activity
+            if item.kind in ("finding", "incident")
+        )
+        texts.extend(
+            (alert.description or alert.title).lower()
+            for alert in self._alert_service.all_alerts()[:20]
+        )
+
+        for txt in texts:
+            if any(k in txt for k in ("scan", "port", "recon", "sweep", "probe")):
+                counts["TA0043"] += 1
+            elif any(k in txt for k in ("inbound", "brute", "login", "auth", "access")):
+                counts["TA0001"] += 1
+            elif any(k in txt for k in ("process", "powershell", "cmd", "spawn", "exec", "shell")):
+                counts["TA0002"] += 1
+            elif any(k in txt for k in ("file", "integrity", "fim", "persist", "registry", "cron")):
+                counts["TA0003"] += 1
+            elif any(k in txt for k in ("ioc", "beacon", "c2", "communicat", "uncommon", "tor")):
+                counts["TA0011"] += 1
+            elif any(k in txt for k in ("volume", "exfil", "anomaly", "spike", "flood")):
+                counts["TA0010"] += 1
+            else:
+                counts["TA0002"] += 1
+
+        if self._mitre_widget is not None:
+            self._mitre_widget.set_stage_counts(counts)
+
+        if self._topology_radar is not None:
+            host_ip = "127.0.0.1"
+            with contextlib.suppress(Exception):
+                from aegis_desktop.services.assets import collect_asset_view
+
+                asset_view = collect_asset_view()
+                if asset_view.rows and asset_view.rows[0].ip_addresses:
+                    host_ip = asset_view.rows[0].ip_addresses[0]
+
+            peers: list[tuple[str, str, str, bool]] = []
+            seen_peers: set[str] = set()
+            for row in reversed(self._live_network.rows()):
+                remote = row.destination if row.direction.lower() != "inbound" else row.source
+                if not remote or remote in seen_peers:
+                    continue
+                seen_peers.add(remote)
+                if len(peers) < 8:
+                    peers.append((remote, row.protocol, row.direction, row.state == "event"))
+
+            self._topology_radar.set_topology(
+                hostname=snapshot.inventory.hostname,
+                host_ip=host_ip,
+                port_count=snapshot.port_count,
+                peers=peers,
+                total_peers=len(seen_peers),
+            )
 
     # -- SOC Posture cards -------------------------------------------------
 
@@ -804,6 +1468,9 @@ class DashboardPage(BasePage):
             if risk.scoring_version:
                 parts.append(f"v{risk.scoring_version}")
             self._posture_risk_sub.setText(" | ".join(parts) if parts else "No risk data")
+
+        if self._risk_gauge is not None:
+            self._risk_gauge.set_score(score, level)
 
         # -- Active Threat Findings --
         high_count = sum(
@@ -842,21 +1509,65 @@ class DashboardPage(BasePage):
         if self._posture_action_sub is not None:
             if pending:
                 self._posture_action_sub.setText(
-                    f"{pending} response request(s) awaiting approval"
+                    f"{pending} response request(s) awaiting action"
                 )
             else:
                 self._posture_action_sub.setText("No pending actions")
 
     @staticmethod
     def _pending_response_count() -> int:
-        """Return count of pending response approvals (lazy import)."""
+        """Return count of response requests still awaiting action (lazy import)."""
         try:
             from aegis_desktop.services.response_workflow import get_workflow_manager
 
             mgr = get_workflow_manager()
-            return mgr.pending_count()
+            return mgr.actionable_count()
         except Exception:
             return 0
+
+    def _on_mitre_tactic_selected(self, tactic_code: str) -> None:
+        """Handle user clicking a MITRE kill chain stage."""
+        self._selected_mitre_tactic = tactic_code if tactic_code else None
+        self._update_threat_feed_filter_ui()
+        if self._snapshot is not None:
+            self._update_threat_feed(self._snapshot)
+
+    def _clear_mitre_filter(self) -> None:
+        """Reset MITRE kill chain stage filtering."""
+        self._selected_mitre_tactic = None
+        if self._mitre_widget is not None:
+            self._mitre_widget.clear_selection()
+        self._update_threat_feed_filter_ui()
+        if self._snapshot is not None:
+            self._update_threat_feed(self._snapshot)
+
+    def _update_threat_feed_filter_ui(self) -> None:
+        """Update the threat feed header filter badge and clear button."""
+        tactic_names = {
+            "TA0043": "RECONNAISSANCE",
+            "TA0001": "INITIAL ACCESS",
+            "TA0002": "EXECUTION",
+            "TA0003": "PERSISTENCE",
+            "TA0011": "COMMAND & CTRL",
+            "TA0010": "EXFILTRATION",
+        }
+        if (
+            self._selected_mitre_tactic
+            and self._threat_feed_filter_badge is not None
+            and self._threat_feed_clear_btn is not None
+        ):
+            name = tactic_names.get(self._selected_mitre_tactic, self._selected_mitre_tactic)
+            self._threat_feed_filter_badge.setText(
+                f"FILTERED: {self._selected_mitre_tactic} {name}"
+            )
+            self._threat_feed_filter_badge.setVisible(True)
+            self._threat_feed_clear_btn.setVisible(True)
+        elif (
+            self._threat_feed_filter_badge is not None
+            and self._threat_feed_clear_btn is not None
+        ):
+            self._threat_feed_filter_badge.setVisible(False)
+            self._threat_feed_clear_btn.setVisible(False)
 
     # -- Unified Threat Investigation Feed ---------------------------------
 
@@ -909,18 +1620,79 @@ class DashboardPage(BasePage):
                     "nav_id": "",
                 })
 
-        if not feed_items:
-            empty = QLabel("No active threats detected. System posture is clean.")
-            empty.setObjectName("CardHint")
-            empty.setStyleSheet(
-                f"font-size: 13px; padding: 20px; color: {OK};"
-            )
-            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Tag each item with MITRE tactic
+        for item in feed_items:
+            txt = f"{item.get('title', '')} {item.get('evidence', '')}".lower()
+            if any(k in txt for k in ("scan", "port", "recon", "sweep", "probe")):
+                item["tactic_code"] = "TA0043"
+                item["tactic"] = "TA0043 RECON"
+            elif any(k in txt for k in ("inbound", "brute", "login", "auth", "access")):
+                item["tactic_code"] = "TA0001"
+                item["tactic"] = "TA0001 INITIAL ACCESS"
+            elif any(k in txt for k in ("process", "powershell", "cmd", "spawn", "exec", "shell")):
+                item["tactic_code"] = "TA0002"
+                item["tactic"] = "TA0002 EXECUTION"
+            elif any(k in txt for k in ("file", "integrity", "fim", "persist", "registry", "cron")):
+                item["tactic_code"] = "TA0003"
+                item["tactic"] = "TA0003 PERSISTENCE"
+            elif any(k in txt for k in ("ioc", "beacon", "c2", "communicat", "uncommon", "tor")):
+                item["tactic_code"] = "TA0011"
+                item["tactic"] = "TA0011 C2"
+            elif any(k in txt for k in ("volume", "exfil", "anomaly", "spike", "flood")):
+                item["tactic_code"] = "TA0010"
+                item["tactic"] = "TA0010 EXFILTRATION"
+            else:
+                item["tactic_code"] = "TA0002"
+                item["tactic"] = "TA0002 EXECUTION"
+
+        # Apply tactic filter if active
+        active_tactic = self._selected_mitre_tactic
+        displayed_items = feed_items
+        if active_tactic:
+            displayed_items = [
+                fi for fi in feed_items if fi.get("tactic_code") == active_tactic
+            ]
+
+        if not displayed_items:
+            empty = QFrame()
+            empty.setObjectName("EmptyStateCard")
+            empty_lay = QVBoxLayout(empty)
+            empty_lay.setContentsMargins(20, 24, 20, 24)
+            empty_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            e_icon = QLabel("🔍" if active_tactic else "🛡")
+            e_icon.setStyleSheet("font-size: 32px; background: transparent;")
+            e_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if active_tactic:
+                e_title = QLabel(f"NO ACTIVE ALERTS MATCHING MITRE {active_tactic}")
+                e_title.setStyleSheet(
+                    "font-size: 13px; font-weight: 800; color: #38BDF8; "
+                    "background: transparent; letter-spacing: 0.8px;"
+                )
+                e_sub = QLabel(
+                    f"There are currently 0 alerts classified under {active_tactic}. "
+                    "Click 'Clear Filter' or select another kill-chain stage."
+                )
+            else:
+                e_title = QLabel("SYSTEM POSTURE CLEAN — ZERO ACTIVE THREATS DETECTED")
+                e_title.setStyleSheet(
+                    f"font-size: 13px; font-weight: 800; color: {OK}; "
+                    "background: transparent; letter-spacing: 0.8px;"
+                )
+                e_sub = QLabel(
+                    "Deterministic rules & anomaly models are actively monitoring telemetry. "
+                    "No security incidents or anomalies found."
+                )
+            e_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            e_sub.setStyleSheet("font-size: 12px; color: #64748B; background: transparent;")
+            e_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_lay.addWidget(e_icon)
+            empty_lay.addWidget(e_title)
+            empty_lay.addWidget(e_sub)
             layout.addWidget(empty)
             return
 
-        for item in feed_items[:30]:
-            layout.addWidget(self._build_threat_card(item))
+        for feed_entry in displayed_items[:30]:
+            layout.addWidget(self._build_threat_card(feed_entry))
 
     def _build_threat_card(self, item: dict[str, str]) -> QWidget:
         """Build a single stylised threat card for the feed."""
@@ -930,43 +1702,62 @@ class DashboardPage(BasePage):
         frame = QFrame()
         frame.setObjectName("Card")
         frame.setStyleSheet(
-            f"QFrame#Card {{ border-left: 3px solid {color}; }}"
+            f"QFrame#Card {{ background-color: #0E1726; border: 1px solid #1E293B; "
+            f"border-left: 4px solid {color}; border-radius: 8px; }}"
+            f"QFrame#Card:hover {{ background-color: #162032; border-color: #334155; }}"
         )
         outer = QHBoxLayout(frame)
         outer.setContentsMargins(14, 10, 14, 10)
-        outer.setSpacing(12)
+        outer.setSpacing(14)
 
         # Severity badge
-        badge = QLabel(item.get("severity", "?")[:4])
+        sev_txt = item.get("severity", "?").upper()[:4]
+        badge = QLabel(sev_txt)
         badge.setObjectName("FieldValue")
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        badge.setFixedWidth(48)
+        badge.setFixedWidth(54)
         badge.setStyleSheet(
-            f"background-color: {color}; color: #FFFFFF; font-weight: 800; "
-            f"font-size: 11px; border-radius: 4px; padding: 4px 2px;"
+            f"background-color: {color}25; color: {color}; border: 1px solid {color}88; "
+            f"font-weight: 800; font-size: 11px; border-radius: 6px; padding: 4px 0;"
         )
         outer.addWidget(badge)
 
         # Content column
         content = QVBoxLayout()
-        content.setSpacing(2)
+        content.setSpacing(3)
 
         title = QLabel(item.get("title", ""))
         title.setObjectName("FieldValue")
+        title.setStyleSheet("font-size: 13px; font-weight: 700; color: #F1F5F9;")
         title.setWordWrap(True)
         content.addWidget(title)
 
         meta_row = QHBoxLayout()
-        meta_row.setSpacing(12)
-        ts_label = QLabel(item.get("timestamp", ""))
+        meta_row.setSpacing(16)
+        ts_label = QLabel("⏱ " + item.get("timestamp", ""))
         ts_label.setObjectName("CardHint")
-        host_label = QLabel("Host: " + item.get("host", _EMPTY))
+        ts_label.setStyleSheet("font-size: 11px; color: #64748B;")
+        raw_host = item.get("host", _EMPTY)
+        host_txt = f"Host: {raw_host}" if "host" not in raw_host.lower() else raw_host
+        host_label = QLabel(f"🖥 {host_txt}")
         host_label.setObjectName("CardHint")
-        ev_label = QLabel(item.get("evidence", ""))
+        host_label.setStyleSheet("font-size: 11px; color: #64748B;")
+        ev_label = QLabel("⚡ " + item.get("evidence", ""))
         ev_label.setObjectName("CardHint")
+        ev_label.setStyleSheet("font-size: 11px; color: #94A3B8;")
         meta_row.addWidget(ts_label)
         meta_row.addWidget(host_label)
         meta_row.addWidget(ev_label)
+
+        tactic = item.get("tactic", "")
+        if tactic:
+            tactic_label = QLabel("🎯 " + tactic)
+            tactic_label.setObjectName("CardHint")
+            tactic_label.setStyleSheet(
+                "font-size: 11px; color: #38BDF8; font-weight: 600; background: transparent;"
+            )
+            meta_row.addWidget(tactic_label)
+
         meta_row.addStretch(1)
         content.addLayout(meta_row)
 
@@ -983,6 +1774,21 @@ class DashboardPage(BasePage):
                     select_id=nid,
                 )
             )
+            # Add explicit Investigate button
+            inv_btn = QPushButton("Investigate →")
+            inv_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            inv_btn.setStyleSheet(
+                "QPushButton { background: #1E293B; color: #93C5FD; border: 1px solid #334155; "
+                "border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 600; } "
+                "QPushButton:hover { background: #2563EB; color: #FFFFFF; border-color: #3B82F6; }"
+            )
+            inv_btn.clicked.connect(lambda _c=False, nt=_nt, nid=_nid: (
+                self._navigate_to(
+                    "detections" if nt == "finding" else "incidents",
+                    select_id=nid,
+                )
+            ))
+            outer.addWidget(inv_btn)
 
         return frame
 
@@ -1043,17 +1849,21 @@ class DashboardPage(BasePage):
             incident_rows = incidents_view.rows if incidents_view.available else ()
         except Exception:
             incident_rows = ()
-        self._alert_service.detect(
+        new_alerts = self._alert_service.detect(
             findings=finding_rows,
             incidents=incident_rows,
             now=datetime.now(UTC),
         )
+        if new_alerts:
+            # New cyber threats / high severity findings detected
+            get_audio_alert_service().play_alarm(duration_seconds=15.0)
 
     # -- Live network activity ----------------------------------------------
 
     def _update_live_network(self, snapshot: DashboardSnapshot) -> None:
         from datetime import datetime as _dt
 
+        from aegis_desktop.services.live_network import analyze_packet_threat
         from aegis_desktop.services.network import collect_network_monitoring_view
 
         try:
@@ -1063,31 +1873,76 @@ class DashboardPage(BasePage):
 
         now = _dt.now(UTC)
         for flow in view.flows:
+            port = ""
+            ep_base = flow.destination.split(" ", 1)[0]
+            if ":" in ep_base:
+                port = ep_base.rsplit(":", 1)[1]
+            elif ":" in flow.source:
+                port = flow.source.rsplit(":", 1)[1]
+            flow_state = "active" if flow.duration_ms < 60000 else "idle"
+            flow_sni = getattr(flow, "sni", None)
+            is_suspicious, threat_tag, threat_detail = analyze_packet_threat(
+                source=flow.source,
+                destination=flow.destination,
+                port=port,
+                protocol=flow.protocol,
+                packets=flow.packets,
+                bytes_transferred=flow.bytes,
+                state=flow_state,
+                domain=flow_sni or "",
+            )
             self._live_network.add(LiveActivityRow(
                 timestamp=now,
                 source=flow.source,
                 destination=flow.destination,
-                port="",
+                port=port,
                 protocol=flow.protocol,
                 packets=flow.packets,
                 bytes=flow.bytes,
                 direction=flow.direction,
-                state="active" if flow.duration_ms < 60000 else "idle",
+                state=flow_state,
                 flow_id=flow.flow_id,
+                is_suspicious=is_suspicious,
+                threat_tag=threat_tag,
+                threat_detail=threat_detail,
+                sni=flow_sni,
             ))
         for event in view.events:
             flow_id = f"evt-{event.timestamp.timestamp():.0f}"
+            port = ""
+            ep_base = event.destination.split(" ", 1)[0]
+            if ":" in ep_base:
+                port = ep_base.rsplit(":", 1)[1]
+            elif ":" in event.source:
+                port = event.source.rsplit(":", 1)[1]
+            ev_pkts = event.packets or 0
+            ev_bytes = event.bytes or 0
+            event_sni = getattr(event, "sni", None)
+            is_suspicious, threat_tag, threat_detail = analyze_packet_threat(
+                source=event.source,
+                destination=event.destination,
+                port=port,
+                protocol=event.protocol,
+                packets=ev_pkts,
+                bytes_transferred=ev_bytes,
+                state=event.event_type or "event",
+                domain=event_sni or "",
+            )
             self._live_network.add(LiveActivityRow(
                 timestamp=event.timestamp,
                 source=event.source,
                 destination=event.destination,
-                port="",
+                port=port,
                 protocol=event.protocol,
-                packets=event.packets or 0,
-                bytes=event.bytes or 0,
+                packets=ev_pkts,
+                bytes=ev_bytes,
                 direction="",
                 state="event",
                 flow_id=flow_id,
+                is_suspicious=is_suspicious,
+                threat_tag=threat_tag,
+                threat_detail=threat_detail,
+                sni=event_sni,
             ))
 
         if self._live_network_model is not None:
@@ -1239,9 +2094,10 @@ class DashboardPage(BasePage):
     # -- Explanation panel -------------------------------------------------
 
     def _update_explanation_panel(self) -> None:
+        from aegis_desktop.services.correlation import correlation_for_finding
+        from aegis_desktop.services.detections import collect_finding_view, describe_finding
+
         try:
-            from aegis_desktop.services.correlation import correlation_for_finding
-            from aegis_desktop.services.detections import collect_finding_view, describe_finding
             view = collect_finding_view()
             findings = view.findings if view.available else ()
         except Exception:

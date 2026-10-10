@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTableView,
     QVBoxLayout,
@@ -122,6 +123,19 @@ class ProcessTableModel(QAbstractTableModel):
             return self._tooltip(row, column)
         if role == Qt.ItemDataRole.UserRole:
             return self._sort_key(row, column)
+        if role == Qt.ItemDataRole.ForegroundRole:
+            from PySide6.QtGui import QColor
+
+            if column in (0, 5):
+                return QColor("#38BDF8")
+            if column == 1:
+                return QColor("#F8FAFC")
+            if column == 8:
+                return QColor("#10B981") if row.command_line_available else QColor("#64748B")
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            if column in (0, 4, 5, 8):
+                return int(Qt.AlignmentFlag.AlignCenter)
+            return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         return None
 
     @staticmethod
@@ -169,8 +183,10 @@ class ProcessTableModel(QAbstractTableModel):
 class ProcessesPage(BasePage):
     """Read-only process monitoring table."""
 
-    PAGE_KEY = "processes"
-    TITLE = "Processes"
+    PAGE_KEY  = "processes"
+    ICON       = "≡"
+    ICON_COLOR = "#8B5CF6"
+    TITLE     = "Processes"
     SUBTITLE = "Read-only process inventory from the endpoint agent."
     EMPTY_STATE = ""
 
@@ -214,6 +230,8 @@ class ProcessesPage(BasePage):
         self._proxy = QSortFilterProxyModel(self)
         self._proxy.setSourceModel(self._model)
         self._proxy.setSortRole(Qt.ItemDataRole.UserRole)
+        self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._proxy.setFilterKeyColumn(-1)
 
         self._table = QTableView()
         self._table.setModel(self._proxy)
@@ -225,6 +243,7 @@ class ProcessesPage(BasePage):
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(False)
+        self._table.horizontalHeader().setSectionsMovable(True)
         for index, width in enumerate(_COLUMN_WIDTHS):
             self._table.setColumnWidth(index, width)
         self._table.sortByColumn(0, Qt.SortOrder.AscendingOrder)
@@ -244,11 +263,22 @@ class ProcessesPage(BasePage):
         self._last_updated_label = QLabel("Last updated: —")
         self._last_updated_label.setObjectName("CardHint")
 
+        self._filter_input = QLineEdit()
+        self._filter_input.setPlaceholderText("Filter processes by name, PID, user, or path...")
+        self._filter_input.setClearButtonEnabled(True)
+        self._filter_input.setMinimumWidth(280)
+        self._filter_input.setMaximumWidth(380)
+        self._filter_input.textChanged.connect(self._on_filter_changed)
+
         toolbar.addWidget(self._refresh_button)
         toolbar.addWidget(self._count_label)
         toolbar.addWidget(self._last_updated_label)
         toolbar.addStretch(1)
+        toolbar.addWidget(self._filter_input)
         return toolbar
+
+    def _on_filter_changed(self, text: str) -> None:
+        self._proxy.setFilterFixedString(text.strip())
 
     # -- Refresh -----------------------------------------------------------
 

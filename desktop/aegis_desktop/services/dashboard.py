@@ -166,11 +166,17 @@ class DashboardSnapshot:
     risk_state: str
 
 
+_CACHED_INVENTORY: SystemInventory | None = None
+
+
 def _default_inventory_collector() -> SystemInventory:
     # Imported lazily so the console does not require the agent extra to start.
-    from aegis_agent.inventory import collect_system_inventory
+    global _CACHED_INVENTORY
+    if _CACHED_INVENTORY is None:
+        from aegis_agent.inventory import collect_system_inventory
 
-    return collect_system_inventory()
+        _CACHED_INVENTORY = collect_system_inventory()
+    return _CACHED_INVENTORY
 
 
 def _inventory_view(collector: Callable[[], SystemInventory]) -> InventoryView:
@@ -309,6 +315,11 @@ def _process_count() -> int:
 def _port_count() -> int:
     """Return the number of listening endpoints, or 0 if collection fails."""
     try:
+        from aegis_shared.assets import get_active_asset_snapshot
+
+        snap = get_active_asset_snapshot()
+        if snap is not None and snap.assets:
+            return sum(len(a.observed_services) for a in snap.assets)
         from aegis_desktop.services.network import collect_port_view
 
         view = collect_port_view()
@@ -323,7 +334,10 @@ def _asset_posture(
     """Read the observed asset/peer posture (real runtime data only)."""
     try:
         view = asset_view_provider() if asset_view_provider is not None else collect_asset_view()
-        return view.posture
+        posture = getattr(view, "posture", None)
+        if isinstance(posture, AssetPosture):
+            return posture
+        return AssetPosture(running=False, assets=0, active_assets=0, peers=0, new_observations=0)
     except Exception as exc:
         logger.warning("Dashboard asset collection failed: %s", exc)
         return AssetPosture(running=False, assets=0, active_assets=0, peers=0, new_observations=0)
@@ -454,7 +468,19 @@ def collect_dashboard_snapshot(
         findings_view_provider: Overrides findings view collection.
         asset_view_provider: Overrides asset snapshot collection.
     """
-    agent = agent_settings or get_agent_settings()
+    if agent_settings is not None:
+        agent = agent_settings
+    else:
+        from aegis_desktop.services.monitoring import get_active_monitoring_controller
+
+        ctrl = get_active_monitoring_controller()
+        runtime = getattr(ctrl, "runtime", None) if ctrl is not None else None
+        runtime_agent = (
+            getattr(runtime, "_agent", None)
+            if ctrl is not None and getattr(ctrl, "is_running", False) and runtime is not None
+            else None
+        )
+        agent = runtime_agent if isinstance(runtime_agent, AgentSettings) else get_agent_settings()
     sensor = sensor_settings or get_sensor_settings()
     collector = inventory_collector or _default_inventory_collector
 

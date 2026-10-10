@@ -40,7 +40,7 @@ import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from aegis_agent.config import AgentSettings, get_agent_settings
 from aegis_agent.inventory import collect_system_inventory
@@ -728,16 +728,19 @@ class AegisRuntime:
             return None
 
     @staticmethod
-    def _snapshot_of(monitor: object, name: str, errors: list[str]) -> object | None:
+    def _snapshot_of(monitor: object, name: str, errors: list[str]) -> Any:
         """Best-effort current snapshot from a monitor (may be unsupported)."""
         if monitor is None:
             return None
+        baseline = getattr(monitor, "_baseline", None)
+        if baseline is not None:
+            return baseline
         snapshot = getattr(monitor, "snapshot", None)
         if not callable(snapshot):
             return None
         return AegisRuntime._guard(name, snapshot, errors)
 
-    def _port_snapshot(self, errors: list[str]) -> object | None:
+    def _port_snapshot(self, errors: list[str]) -> Any:
         """Return the cycle's port snapshot, probing at most once per cycle."""
         if self._cycle_port_snapshot is not None:
             return self._cycle_port_snapshot
@@ -1273,7 +1276,32 @@ class AegisRuntime:
     def _resolve_host_ref(self) -> HostRef:
         try:
             self._inventory = collect_system_inventory()
-            return self._inventory.to_host_ref()
+            base_ref = self._inventory.to_host_ref()
+            local_ips: list[str] = list(base_ref.ip_addresses)
+            if not local_ips:
+                try:
+                    import socket
+
+                    import psutil
+
+                    addrs = [
+                        a.address
+                        for iface in psutil.net_if_addrs().values()
+                        for a in iface
+                        if a.family == socket.AF_INET and not a.address.startswith("127.")
+                    ]
+                    routable = [a for a in addrs if not a.startswith("169.254.")]
+                    local_ips = routable or addrs
+                except Exception as exc:
+                    logger.debug("Local IP resolution skipped: %s", exc)
+            return HostRef(
+                host_id=base_ref.host_id,
+                hostname=base_ref.hostname,
+                platform=base_ref.platform,
+                os_version=base_ref.os_version,
+                ip_addresses=tuple(local_ips),
+                tags=base_ref.tags,
+            )
         except Exception as exc:
             self._record("inventory", exc, [])
             self._inventory = None

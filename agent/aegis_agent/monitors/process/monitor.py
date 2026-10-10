@@ -15,7 +15,7 @@ reused PID is correctly reported as one process stopping and another starting.
 
 from __future__ import annotations
 
-from aegis_agent.monitors.process.collector import ProcessCollector
+from aegis_agent.monitors.process.collector import _DEFAULT_COLLECTOR, ProcessCollector
 from aegis_agent.monitors.process.models import ProcessChanges, ProcessSnapshot
 
 
@@ -23,7 +23,7 @@ class ProcessMonitor:
     """Detect process starts and exits by diffing successive snapshots."""
 
     def __init__(self, *, collector: ProcessCollector | None = None) -> None:
-        self._collector = collector or ProcessCollector()
+        self._collector = collector or _DEFAULT_COLLECTOR
         self._baseline: ProcessSnapshot | None = None
 
     @property

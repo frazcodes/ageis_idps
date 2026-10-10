@@ -6,6 +6,11 @@ detail view only, with the related findings/events already buffered in the
 existing event pipeline and any published ML anomaly signals. Incidents are the
 single source of truth: none are fabricated in the GUI.
 
+The one demo-mode addition: incidents (and their related findings) injected by
+the threat-simulation playbooks are overlaid on the published registry so a
+presentation stays populated after *Stop Monitoring* clears the runtime state.
+They are read from the demo module, never generated here.
+
 It never starts a producer, never runs a correlation/detection/scoring loop,
 never drains shared state and never performs a response.
 """
@@ -15,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from aegis_desktop.services.correlation import CorrelationEvidence, collect_correlations
 from aegis_desktop.services.processes import MISSING
@@ -71,6 +76,9 @@ class IncidentFindingView:
     rule_id: str
     severity: str
     title: str
+    evidence: dict[str, str] | tuple[tuple[str, str], ...] = ()
+    timestamp: datetime | None = None
+    host_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +88,7 @@ class IncidentEventView:
     event_id: str
     event_type: str
     category: str
+    timestamp: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -121,11 +130,39 @@ class IncidentSnapshotView:
         return None
 
 
+def _simulated_incidents() -> tuple[SecurityIncident, ...]:
+    """Demo incidents injected by the threat-simulation playbooks (guarded)."""
+    try:
+        from aegis_desktop.threat_sim import simulated_incidents
+
+        return simulated_incidents()
+    except Exception as exc:  # pragma: no cover - only without the demo module
+        logger.debug("Simulated incident overlay unavailable: %s", exc)
+        return ()
+
+
+def _simulated_findings() -> tuple[DetectionFinding, ...]:
+    """Demo findings injected by the threat-simulation playbooks (guarded)."""
+    try:
+        from aegis_desktop.threat_sim import simulated_findings
+
+        return simulated_findings()
+    except Exception as exc:  # pragma: no cover - only without the demo module
+        logger.debug("Simulated finding overlay unavailable: %s", exc)
+        return ()
+
+
 def _default_incidents() -> tuple[SecurityIncident, ...]:
-    """Return the incidents currently published by the runtime (read-only)."""
+    """Return published incidents plus the demo overlay (read-only)."""
     from aegis_shared.correlation import get_active_incidents
 
-    return get_active_incidents()
+    published = get_active_incidents()
+    demo = _simulated_incidents()
+    if not demo:
+        return published
+    seen = {incident.incident_id for incident in published}
+    extra = tuple(incident for incident in demo if incident.incident_id not in seen)
+    return (*published, *extra) if extra else published
 
 
 def _default_events() -> list[SecurityEvent]:
@@ -139,15 +176,20 @@ def _default_events() -> list[SecurityEvent]:
 
 
 def _default_findings_by_id() -> dict[str, DetectionFinding]:
-    """Evaluate the active detection engine over buffered events (read-only)."""
+    """Evaluate the active detection engine over buffered events (read-only).
+
+    Demo findings are merged in so a simulated incident still shows its related
+    evidence in the detail view after the runtime has been stopped.
+    """
     from aegis_shared.detection import get_active_engine
 
     engine = get_active_engine()
-    if engine is None:
-        return {}
     findings: dict[str, DetectionFinding] = {}
-    for finding in engine.evaluate_many(_default_events()):
-        findings[finding.finding_id] = finding
+    if engine is not None:
+        for finding in engine.evaluate_many(_default_events()):
+            findings[finding.finding_id] = finding
+    for finding in _simulated_findings():
+        findings.setdefault(finding.finding_id, finding)
     return findings
 
 
@@ -182,8 +224,8 @@ def collect_incident_view(
     events_provider: Callable[[], Iterable[SecurityEvent]] | None = None,
     findings_provider: Callable[[], dict[str, DetectionFinding]] | None = None,
     anomalies_provider: Callable[[], dict[str, AnomalySignal]] | None = None,
-    correlations_provider: Callable[[], tuple[CorrelationEvidence, ...]] | None = None,
-    ioc_matcher_provider: Callable[[], object] | None = None,
+    correlations_provider: Callable[[], Any] | None = None,
+    ioc_matcher_provider: Callable[[], Any] | None = None,
 ) -> IncidentSnapshotView:
     """Read the current incidents, enriched with their related evidence.
 
@@ -221,6 +263,9 @@ def collect_incident_view(
                 rule_id=f.rule_id,
                 severity=f.severity.value,
                 title=f.title,
+                evidence=dict(f.evidence),
+                timestamp=f.timestamp,
+                host_id=f.host_id,
             )
             for fid, f in sorted(finding_map.items())
             if fid in related_finding_ids
@@ -235,6 +280,7 @@ def collect_incident_view(
                 event_id=e.event_id,
                 event_type=e.event_type.value,
                 category=e.category.value,
+                timestamp=getattr(e, "timestamp", None),
             )
             for e in all_events
             if e.event_id in related_event_ids

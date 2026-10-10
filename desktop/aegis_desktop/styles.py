@@ -115,26 +115,28 @@ QToolTip {{
     border: none;
     border-right: 1px solid {BORDER_SUBTLE};
     outline: 0;
-    padding: 12px 8px;
+    padding: 10px 6px;
 }}
 
 #Sidebar::item {{
-    padding: 10px 14px;
-    margin: 2px 6px;
-    border-radius: {RADIUS_MD};
+    padding: 9px 12px 9px 10px;
+    margin: 1px 4px;
+    border-radius: 8px;
     border-left: 3px solid transparent;
     color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_SM};
+    font-size: 12px;
     font-weight: 500;
+    min-height: 32px;
 }}
 
 #Sidebar::item:hover {{
-    background-color: {BG_SURFACE_ALT};
+    background-color: rgba(30, 41, 59, 0.85);
     color: {TEXT_SECONDARY};
+    border-left: 3px solid rgba(29, 78, 216, 0.4);
 }}
 
 #Sidebar::item:selected {{
-    background-color: {ACCENT_SOFT};
+    background-color: rgba(23, 37, 84, 0.80);
     color: {TEXT_PRIMARY};
     font-weight: 700;
     border-left: 3px solid {ACCENT_PRIMARY};
@@ -206,31 +208,51 @@ QToolTip {{
 
 /* --- Page Chrome -------------------------------------------------------- */
 #PageTitle {{
-    font-size: {FONT_SIZE_TITLE};
-    font-weight: 700;
+    font-size: 20px;
+    font-weight: 800;
     color: {TEXT_PRIMARY};
-    letter-spacing: -0.5px;
+    letter-spacing: -0.3px;
 }}
 
 #PageSubtitle {{
     color: {TEXT_MUTED};
-    font-size: {FONT_SIZE_SUBTITLE};
+    font-size: {FONT_SIZE_SM};
 }}
 
 #EmptyState {{
     color: {TEXT_MUTED};
+    background-color: transparent;
+    font-size: {FONT_SIZE_SM};
+}}
+
+#EmptyStateCard {{
     background-color: {BG_SURFACE_ALT};
     border: 1px dashed {BORDER_MEDIUM};
-    border-radius: {RADIUS_LG};
-    padding: 24px 28px;
-    font-size: {FONT_SIZE_SM};
+    border-radius: {RADIUS_XL};
+}}
+
+#PageHeaderOuter {{
+    background-color: {BG_SURFACE};
+    border-bottom: 1px solid {BORDER_SUBTLE};
+}}
+
+#CardHeader {{
+    background-color: {BG_SURFACE_ALT};
+    border-bottom: 1px solid {BORDER_SUBTLE};
+    border-radius: 10px 10px 0 0;
+}}
+
+#SectionCard {{
+    background-color: #0E1726;
+    border: 1px solid #1E293B;
+    border-radius: 10px;
 }}
 
 /* --- Cards & Panels ----------------------------------------------------- */
 #Card {{
-    background-color: {BG_SURFACE};
-    border: 1px solid {BORDER_SUBTLE};
-    border-radius: {RADIUS_LG};
+    background-color: #0E1726;
+    border: 1px solid #1E293B;
+    border-radius: 10px;
 }}
 
 #CardTitle {{
@@ -336,76 +358,76 @@ QPushButton:disabled {{
 }}
 
 #PrimaryButton {{
-    background-color: {ACCENT_PRIMARY};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563EB, stop:1 #1D4ED8);
     color: #FFFFFF;
-    border: 1px solid {ACCENT_PRIMARY};
-    border-radius: {RADIUS_MD};
-    padding: 8px 20px;
+    border: 1px solid #3B82F6;
+    border-radius: 6px;
+    padding: 7px 18px;
     font-weight: 700;
-    font-size: {FONT_SIZE_SM};
+    font-size: 12px;
 }}
 
 #PrimaryButton:hover {{
-    background-color: {ACCENT_PRIMARY_HOVER};
-    border-color: {ACCENT_PRIMARY_HOVER};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3B82F6, stop:1 #2563EB);
+    border-color: #60A5FA;
 }}
 
 #PrimaryButton:pressed {{
-    background-color: {ACCENT_PRIMARY_PRESSED};
-    border-color: {ACCENT_PRIMARY_PRESSED};
+    background-color: #1E40AF;
+    border-color: #1D4ED8;
 }}
 
 #PrimaryButton:disabled {{
-    background-color: {BG_SURFACE_ALT};
-    color: {TEXT_DISABLED};
-    border-color: {BORDER_SUBTLE};
+    background-color: #161E2E;
+    color: #64748B;
+    border-color: #1F2937;
 }}
 
 /* Secondary/Ghost Button */
 #SecondaryButton {{
-    background-color: transparent;
-    color: {TEXT_SECONDARY};
-    border: 1px solid {BORDER_MEDIUM};
-    border-radius: {RADIUS_MD};
-    padding: 8px 18px;
+    background-color: #1E293B;
+    color: #E2E8F0;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 7px 16px;
     font-weight: 600;
 }}
 
 #SecondaryButton:hover {{
-    background-color: {BG_SURFACE_ALT};
-    color: {TEXT_PRIMARY};
-    border-color: {BORDER_STRONG};
+    background-color: #334155;
+    color: #FFFFFF;
+    border-color: #475569;
 }}
 
 /* Danger/Destructive Button (outlined) */
 #DangerButton {{
     background-color: transparent;
-    color: {SEV_CRITICAL};
-    border: 1px solid {SEV_CRITICAL};
-    border-radius: {RADIUS_MD};
-    padding: 8px 18px;
+    color: #EF4444;
+    border: 1px solid #EF4444;
+    border-radius: 6px;
+    padding: 7px 16px;
     font-weight: 600;
 }}
 
 #DangerButton:hover {{
-    background-color: rgba(239, 68, 68, 0.12);
-    border-color: {SEV_CRITICAL};
+    background-color: rgba(239, 68, 68, 0.15);
+    border-color: #F87171;
     color: #FCA5A5;
 }}
 
 /* Warning / elevated-intent Button (amber, solid) */
 #WarningButton {{
-    background-color: {SEV_MEDIUM};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #F59E0B, stop:1 #D97706);
     color: #0B1120;
-    border: 1px solid {SEV_MEDIUM};
-    border-radius: {RADIUS_MD};
-    padding: 8px 18px;
+    border: 1px solid #FBBF24;
+    border-radius: 6px;
+    padding: 7px 18px;
     font-weight: 800;
-    font-size: {FONT_SIZE_SM};
+    font-size: 12px;
 }}
 
 #WarningButton:hover {{
-    background-color: #FBBF24;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #FBBF24, stop:1 #F59E0B);
     border-color: #FBBF24;
     color: #0B1120;
 }}
@@ -619,55 +641,59 @@ QStatusBar::item {{ border: none; }}
 
 /* --- Tables ------------------------------------------------------------- */
 QTableView, QTableWidget {{
-    background-color: {BG_SURFACE};
-    alternate-background-color: {BG_SURFACE_ALT};
-    gridline-color: transparent;
-    border: 1px solid {BORDER_SUBTLE};
-    border-radius: {RADIUS_LG};
-    selection-background-color: {ROW_SELECTED};
+    background-color: #0B1120;
+    alternate-background-color: #0F172A;
+    gridline-color: #1E293B;
+    border: 1px solid #1E293B;
+    border-radius: 8px;
+    selection-background-color: #1D4ED8;
     selection-color: #FFFFFF;
     outline: 0;
 }}
 
 QTableView::item, QTableWidget::item {{
     padding: 8px 12px;
-    border-bottom: 1px solid {ROW_LINE};
+    border-bottom: 1px solid #162032;
+    color: #CBD5E1;
+    font-size: 12px;
 }}
 
 QTableView::item:hover, QTableWidget::item:hover {{
-    background-color: {ROW_HOVER};
+    background-color: #1E293B;
+    color: #F8FAFC;
 }}
 
 QTableView::item:selected, QTableWidget::item:selected {{
-    background-color: {ROW_SELECTED};
+    background-color: #1E3A8A;
     color: #FFFFFF;
+    font-weight: 600;
 }}
 
 QHeaderView {{
-    background-color: {BG_SIDEBAR};
+    background-color: #0A0F1C;
     border: none;
 }}
 
 QHeaderView::section {{
-    background-color: {BG_SIDEBAR};
-    color: {TEXT_MUTED};
+    background-color: #0C1322;
+    color: #94A3B8;
     font-weight: 700;
-    font-size: {FONT_SIZE_LABEL};
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 10px 12px;
+    letter-spacing: 0.6px;
+    padding: 9px 12px;
     border: none;
-    border-right: 1px solid {BORDER_SUBTLE};
-    border-bottom: 1px solid {BORDER_MEDIUM};
+    border-right: 1px solid #1E293B;
+    border-bottom: 2px solid #1E293B;
 }}
 
 QHeaderView::section:hover {{
-    background-color: {BG_SURFACE_ALT};
-    color: {TEXT_SECONDARY};
+    background-color: #162032;
+    color: #F8FAFC;
 }}
 
 QTableCornerButton::section {{
-    background-color: {BG_SIDEBAR};
+    background-color: #0C1322;
     border: none;
 }}
 
@@ -789,11 +815,15 @@ QTabBar::tab:selected {{
 
 /* --- Splitter & Scroll Areas ------------------------------------------- */
 QSplitter::handle {{
-    background-color: {BORDER_SUBTLE};
+    background-color: #1E293B;
 }}
 
-QSplitter::handle:horizontal {{ width: 1px; }}
-QSplitter::handle:vertical {{ height: 1px; }}
+QSplitter::handle:hover {{
+    background-color: #3B82F6;
+}}
+
+QSplitter::handle:horizontal {{ width: 3px; }}
+QSplitter::handle:vertical {{ height: 3px; }}
 
 QScrollArea {{
     border: none;
@@ -921,6 +951,90 @@ QProgressBar::chunk {{
 #PreflightFooter {{
     font-size: {FONT_SIZE_XS};
     color: {TEXT_SECONDARY};
+    background-color: transparent;
+}}
+
+/* --- Threat Simulation Playbooks ---------------------------------------- */
+#ThreatSimDialog {{
+    background-color: {BG_DEEP_NAVY};
+    border: 1px solid {BORDER_MEDIUM};
+}}
+
+#ThreatSimTitle {{
+    font-size: 18px;
+    font-weight: 700;
+    color: {TEXT_PRIMARY};
+    background-color: transparent;
+}}
+
+#ThreatSimSubtitle {{
+    font-size: {FONT_SIZE_SM};
+    color: {TEXT_MUTED};
+    background-color: transparent;
+}}
+
+#ScenarioCard {{
+    background-color: {BG_SURFACE};
+    border: 1px solid {BORDER_SUBTLE};
+    border-radius: {RADIUS_LG};
+}}
+
+#ScenarioCard:hover {{
+    background-color: {BG_SURFACE_ALT};
+    border-color: {BORDER_MEDIUM};
+}}
+
+#ScenarioCard[selected="true"] {{
+    background-color: {ACCENT_SOFT};
+    border: 1px solid {ACCENT_PRIMARY};
+}}
+
+#ScenarioTitle {{
+    font-size: {FONT_SIZE_BASE};
+    font-weight: 700;
+    color: {TEXT_PRIMARY};
+    background-color: transparent;
+}}
+
+#ScenarioDomain {{
+    font-size: {FONT_SIZE_XS};
+    font-weight: 600;
+    color: {TEXT_MUTED};
+    background-color: transparent;
+}}
+
+#ScenarioDesc {{
+    font-size: {FONT_SIZE_SM};
+    color: {TEXT_SECONDARY};
+    background-color: transparent;
+}}
+
+#ScenarioHint {{
+    font-size: {FONT_SIZE_XS};
+    color: {TEXT_MUTED};
+    background-color: transparent;
+}}
+
+#ScenarioSeverity {{
+    font-size: {FONT_SIZE_XS};
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: {RADIUS_SM};
+    color: #FFFFFF;
+    background-color: {SEV_HIGH};
+}}
+
+#ScenarioSeverity[state="critical"] {{
+    background-color: {SEV_CRITICAL};
+}}
+
+#ScenarioSeverity[state="high"] {{
+    background-color: {SEV_HIGH};
+}}
+
+#ThreatSimNote {{
+    font-size: {FONT_SIZE_XS};
+    color: {TEXT_MUTED};
     background-color: transparent;
 }}
 

@@ -72,6 +72,8 @@ class AssetRow:
     platform: str = "unknown"
     architecture: str | None = None
     interface_count: int = 0
+    exposure_grade: str = "A"
+    exposure_score: int = 0
 
 
 @dataclass(frozen=True)
@@ -140,6 +142,54 @@ def _empty_view() -> AssetSnapshotView:
     )
 
 
+_CRITICAL_PORTS: frozenset[int] = frozenset({
+    21, 23, 135, 137, 138, 139, 445, 1433, 3389, 4444, 5555, 6667,
+})
+
+
+
+def calculate_exposure_grade(
+    services: tuple[ServiceView, ...],
+    peers: tuple[PeerView, ...],
+) -> tuple[str, int]:
+    """Calculate deterministic exposure score (0-100) and letter grade (A-F)."""
+    score = 0
+    port_count = len(services)
+    if port_count > 8:
+        score += 25
+    elif port_count > 4:
+        score += 15
+    elif port_count > 1:
+        score += 5
+
+    for svc in services:
+        if svc.port in _CRITICAL_PORTS:
+            score += 25
+        elif not svc.known:
+            score += 10
+
+    if len(peers) > 10:
+        score += 20
+    elif len(peers) > 5:
+        score += 10
+
+    unknown_peers = sum(1 for p in peers if not p.known)
+    score += min(unknown_peers * 5, 20)
+
+    score = min(max(score, 0), 100)
+    if score < 20:
+        grade = "A"
+    elif score < 40:
+        grade = "B"
+    elif score < 60:
+        grade = "C"
+    elif score < 80:
+        grade = "D"
+    else:
+        grade = "F"
+    return grade, score
+
+
 def collect_asset_view(
     *,
     snapshot_provider: Callable[[], AssetSnapshot | None] | None = None,
@@ -205,6 +255,7 @@ def collect_asset_view(
             known_peers=sum(1 for peer in asset_peers if peer.known),
             new_peers=sum(1 for peer in asset_peers if not peer.known),
         )
+        grade, exp_score = calculate_exposure_grade(asset_services, asset_peers)
         rows.append(
             AssetRow(
                 asset_id=asset.asset_id,
@@ -220,6 +271,8 @@ def collect_asset_view(
                 platform=asset.platform.value,
                 architecture=asset.architecture,
                 interface_count=asset.interface_count,
+                exposure_grade=grade,
+                exposure_score=exp_score,
             )
         )
 
@@ -260,5 +313,6 @@ __all__ = [
     "PeerView",
     "ServiceView",
     "asset_context_for_host",
+    "calculate_exposure_grade",
     "collect_asset_view",
 ]

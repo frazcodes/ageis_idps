@@ -23,9 +23,11 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -170,8 +172,10 @@ class EventTableModel(QAbstractTableModel):
 class EventsPage(BasePage):
     """Read-only table + detail view of buffered security events."""
 
-    PAGE_KEY = "events"
-    TITLE = "Events"
+    PAGE_KEY  = "events"
+    ICON       = "◆"
+    ICON_COLOR = "#6366F1"
+    TITLE     = "Events"
     SUBTITLE = "Read-only inspection of security events already in the pipeline."
     EMPTY_STATE = ""
 
@@ -216,6 +220,8 @@ class EventsPage(BasePage):
         self._proxy = QSortFilterProxyModel(self)
         self._proxy.setSourceModel(self._model)
         self._proxy.setSortRole(Qt.ItemDataRole.UserRole)
+        self._proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._proxy.setFilterKeyColumn(-1)
 
         self._table = QTableView()
         self._table.setModel(self._proxy)
@@ -228,6 +234,7 @@ class EventsPage(BasePage):
         self._table.setWordWrap(False)
         self._table.verticalHeader().setVisible(False)
         self._table.horizontalHeader().setStretchLastSection(False)
+        self._table.horizontalHeader().setSectionsMovable(True)
         for index, width in enumerate(_COLUMN_WIDTHS):
             self._table.setColumnWidth(index, width)
         self._table.sortByColumn(0, Qt.SortOrder.DescendingOrder)
@@ -246,7 +253,7 @@ class EventsPage(BasePage):
 
     def _build_toolbar(self) -> QHBoxLayout:
         toolbar = QHBoxLayout()
-        toolbar.setSpacing(12)
+        toolbar.setSpacing(10)
 
         self._refresh_button = QPushButton("Refresh")
         self._refresh_button.setObjectName("PrimaryButton")
@@ -257,11 +264,37 @@ class EventsPage(BasePage):
         self._last_updated_label = QLabel("Last updated: —")
         self._last_updated_label.setObjectName("CardHint")
 
+        # Severity selector combo box
+        self._severity_filter = QComboBox()
+        self._severity_filter.setObjectName("SeverityFilter")
+        self._severity_filter.addItems(["ALL SEVERITY", "CRITICAL", "HIGH", "WARN", "INFO"])
+        self._severity_filter.setFixedWidth(130)
+        self._severity_filter.currentTextChanged.connect(self._on_severity_selected)
+
+        self._filter_input = QLineEdit()
+        self._filter_input.setObjectName("EventsSearchInput")
+        self._filter_input.setPlaceholderText("Search events by type, ID, host, source, summary...")
+        self._filter_input.setClearButtonEnabled(True)
+        self._filter_input.setMinimumWidth(260)
+        self._filter_input.setMaximumWidth(360)
+        self._filter_input.textChanged.connect(self._on_filter_changed)
+
         toolbar.addWidget(self._refresh_button)
         toolbar.addWidget(self._count_label)
         toolbar.addWidget(self._last_updated_label)
         toolbar.addStretch(1)
+        toolbar.addWidget(self._severity_filter)
+        toolbar.addWidget(self._filter_input)
         return toolbar
+
+    def _on_severity_selected(self, text: str) -> None:
+        if "ALL" in text.upper():
+            self._proxy.setFilterFixedString(self._filter_input.text().strip())
+        else:
+            self._proxy.setFilterFixedString(text.strip().lower())
+
+    def _on_filter_changed(self, text: str) -> None:
+        self._proxy.setFilterFixedString(text.strip())
 
     def _build_posture(self) -> QHBoxLayout:
         posture = QHBoxLayout()
