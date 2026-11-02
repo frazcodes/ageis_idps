@@ -60,6 +60,11 @@ declare module "lucide-react" {
   export const ExternalLink: any;
   export const ChevronRight: any;
   export const UserCheck: any;
+  export const Activity: any;
+  export const Cpu: any;
+  export const Terminal: any;
+  export const Radio: any;
+  export const Globe: any;
   export const LucideIcon: any;
   const icons: Record<string, any>;
   export default icons;
