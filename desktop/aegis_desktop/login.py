@@ -71,8 +71,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# ---------------------------------------------------------------------------
-# Design tokens (mirrors styles.py but standalone so login needs no deps)
+from aegis_desktop.services.license_client import LicenseClient, LocalLicense
 # ---------------------------------------------------------------------------
 
 _BG         = "#080D18"
@@ -568,17 +567,17 @@ class _ClockStrip(QLabel):
 # ---------------------------------------------------------------------------
 
 class _LoginCard(QFrame):
-    """The centred semi-transparent login card."""
+    """The centred semi-transparent login card with unified Node License Authentication."""
 
-    authenticated = Signal(str, str)  # (username, password)
+    authenticated = Signal(str, str)  # (operator_name, license_key)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedSize(420, 560)
+        self.setFixedSize(450, 620)
         self.setObjectName("LoginCard")
         self.setStyleSheet(f"""
             #LoginCard {{
-                background-color: rgba(11, 22, 42, 0.88);
+                background-color: rgba(11, 22, 42, 0.90);
                 border: 1.5px solid {_BORDER2};
                 border-radius: 20px;
             }}
@@ -589,14 +588,22 @@ class _LoginCard(QFrame):
         shadow.setBlurRadius(60)
         shadow.setXOffset(0)
         shadow.setYOffset(8)
-        shadow.setColor(QColor(0, 0, 0, 180))
+        shadow.setColor(QColor(0, 0, 0, 190))
         self.setGraphicsEffect(shadow)
+
+        self._client = LicenseClient()
+        self._local_lic: LocalLicense | None = self._client.load_local_license()
+        self._mode = "authorized" if self._local_lic else "activate"
 
         self._build()
 
     def _build(self) -> None:
+        # Clear existing layout if rebuilding
+        if self.layout() is not None:
+            QWidget().setLayout(self.layout())
+
         root = QVBoxLayout(self)
-        root.setContentsMargins(36, 36, 36, 32)
+        root.setContentsMargins(36, 32, 36, 28)
         root.setSpacing(0)
 
         # ── Logo + branding ──────────────────────────────────────────────
@@ -605,7 +612,7 @@ class _LoginCard(QFrame):
         self._shield = _ShieldLogo()
         logo_row.addWidget(self._shield)
         root.addLayout(logo_row)
-        root.addSpacing(16)
+        root.addSpacing(14)
 
         product = QLabel("AEGIS IDPS")
         product.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -621,129 +628,220 @@ class _LoginCard(QFrame):
             f"color: {_MUTED2}; font-size: 11px; letter-spacing: 2px; background: transparent;"
         )
         root.addWidget(tagline)
-        root.addSpacing(10)
+        root.addSpacing(12)
 
         # Divider line
         divider = QFrame()
         divider.setFixedHeight(1)
         divider.setStyleSheet(f"background: {_BORDER}; border: none;")
         root.addWidget(divider)
-        root.addSpacing(22)
-
-        # ── Sign-in label ────────────────────────────────────────────────
-        sign_in = QLabel("Administrator Sign-in")
-        sign_in.setStyleSheet(
-            f"color: {_TEXT2}; font-size: 13px; font-weight: 600; background: transparent;"
-        )
-        root.addWidget(sign_in)
         root.addSpacing(14)
 
-        # ── Username field ───────────────────────────────────────────────
-        self._user_field = _IconLineEdit(
-            "Username or email", icon="👤", parent=self
-        )
-        self._user_field.returnPressed.connect(self._pass_field_focus)
-        root.addWidget(self._user_field)
-        root.addSpacing(10)
-
-        # ── Password field ───────────────────────────────────────────────
-        self._pass_field = _IconLineEdit(
-            "Password", password=True, icon="🔒", parent=self
-        )
-        self._pass_field.returnPressed.connect(self._on_login_clicked)
-        root.addWidget(self._pass_field)
-        root.addSpacing(10)
-
-        # ── Remember me + Forgot ─────────────────────────────────────────
-        opts_row = QHBoxLayout()
-        opts_row.setContentsMargins(0, 0, 0, 0)
-        self._remember = QCheckBox("Remember me")
-        self._remember.setStyleSheet(f"""
-            QCheckBox {{
-                color: {_MUTED2};
-                font-size: 12px;
-                background: transparent;
-                spacing: 6px;
-            }}
-            QCheckBox::indicator {{
-                width: 14px; height: 14px;
-                border: 1px solid {_BORDER2};
-                background-color: {_CARD2};
-                border-radius: 3px;
-            }}
-            QCheckBox::indicator:checked {{
-                background-color: {_ACCENT};
-                border-color: {_ACCENT};
+        # ── Hardware ID Pill (Monospace + One-Click Copy) ────────────────
+        hwid_frame = QFrame()
+        hwid_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: rgba(15, 23, 42, 0.70);
+                border: 1px solid {_BORDER};
+                border-radius: 8px;
             }}
         """)
-        forgot = QPushButton("Forgot password?")
-        forgot.setCursor(Qt.CursorShape.PointingHandCursor)
-        forgot.setStyleSheet(f"""
+        hwid_layout = QHBoxLayout(hwid_frame)
+        hwid_layout.setContentsMargins(12, 6, 8, 6)
+        hwid_layout.setSpacing(8)
+
+        hwid_prefix = QLabel("HWID:")
+        hwid_prefix.setStyleSheet(f"color: {_MUTED}; font-size: 10px; font-weight: 700; background: transparent;")
+        hwid_val = QLabel(self._client.hardware_id)
+        hwid_val.setStyleSheet(f"color: {_CYAN}; font-family: 'Consolas', monospace; font-size: 11px; font-weight: 600; background: transparent;")
+
+        self._copy_btn = QPushButton("Copy")
+        self._copy_btn.setFixedSize(54, 22)
+        self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._copy_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent;
-                border: none;
-                color: {_ACCENT3};
-                font-size: 12px;
-                padding: 0;
+                background-color: {_CARD2};
+                color: {_TEXT2};
+                border: 1px solid {_BORDER2};
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: 600;
             }}
-            QPushButton:hover {{ color: {_CYAN}; }}
-        """)
-        opts_row.addWidget(self._remember)
-        opts_row.addStretch()
-        opts_row.addWidget(forgot)
-        root.addLayout(opts_row)
-        root.addSpacing(20)
-
-        # ── Login button ─────────────────────────────────────────────────
-        self._login_btn = QPushButton("Sign in to Console")
-        self._login_btn.setFixedHeight(48)
-        self._login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._login_btn.setObjectName("LoginBtn")
-        self._login_btn.setStyleSheet(f"""
-            #LoginBtn {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {_ACCENT},
-                    stop:1 {_ACCENT2}
-                );
+            QPushButton:hover {{
+                background-color: {_ACCENT};
                 color: #FFFFFF;
-                border: none;
-                border-radius: 10px;
-                font-size: 14px;
-                font-weight: 700;
-                letter-spacing: 0.5px;
-            }}
-            #LoginBtn:hover {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {_ACCENT2},
-                    stop:1 #3B82F6
-                );
-            }}
-            #LoginBtn:pressed {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #1E40AF,
-                    stop:1 {_ACCENT}
-                );
-            }}
-            #LoginBtn:disabled {{
-                background: #1E293B;
-                color: {_MUTED};
+                border-color: {_ACCENT3};
             }}
         """)
-        self._login_btn.clicked.connect(self._on_login_clicked)
-        root.addWidget(self._login_btn)
-        root.addSpacing(14)
+        self._copy_btn.clicked.connect(self._copy_hwid)
+
+        hwid_layout.addWidget(hwid_prefix)
+        hwid_layout.addWidget(hwid_val, 1)
+        hwid_layout.addWidget(self._copy_btn)
+        root.addWidget(hwid_frame)
+        root.addSpacing(16)
+
+        # ── Dynamic Section: Authorized Profile vs Key Activation ─────────
+        if self._mode == "authorized" and self._local_lic:
+            # Authorized Status Banner
+            auth_badge = QLabel("●  STATION AUTHORIZED & SECURED")
+            auth_badge.setStyleSheet(f"color: {_GREEN}; font-size: 11px; font-weight: 700; letter-spacing: 1px; background: transparent;")
+            root.addWidget(auth_badge)
+            root.addSpacing(10)
+
+            # Profile Info Box
+            profile_card = QFrame()
+            profile_card.setStyleSheet(f"""
+                QFrame {{
+                    background-color: rgba(16, 185, 129, 0.08);
+                    border: 1px solid rgba(16, 185, 129, 0.25);
+                    border-radius: 10px;
+                }}
+            """)
+            p_layout = QVBoxLayout(profile_card)
+            p_layout.setContentsMargins(14, 12, 14, 12)
+            p_layout.setSpacing(4)
+
+            op_name = QLabel(f"Operator: {self._local_lic.client_name}")
+            op_name.setStyleSheet(f"color: {_TEXT}; font-size: 13px; font-weight: 700; background: transparent;")
+            org_name = QLabel(f"Org: {self._local_lic.organization}")
+            org_name.setStyleSheet(f"color: {_MUTED2}; font-size: 11px; background: transparent;")
+            
+            exp_date = self._local_lic.expires_at[:10] if self._local_lic.expires_at else "Valid"
+            lic_pill = QLabel(f"Key: {self._local_lic.key}  •  Expires: {exp_date}")
+            lic_pill.setStyleSheet(f"color: {_CYAN}; font-family: monospace; font-size: 10px; background: transparent;")
+
+            p_layout.addWidget(op_name)
+            p_layout.addWidget(org_name)
+            p_layout.addWidget(lic_pill)
+            root.addWidget(profile_card)
+            root.addSpacing(16)
+
+            # Main Action Button
+            self._login_btn = QPushButton("SIGN IN TO SOC CONSOLE")
+            self._login_btn.setFixedHeight(48)
+            self._login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._login_btn.setObjectName("LoginBtn")
+            self._login_btn.setStyleSheet(f"""
+                #LoginBtn {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:1, y2:0,
+                        stop:0 {_ACCENT},
+                        stop:1 {_ACCENT2}
+                    );
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 10px;
+                    font-size: 13px;
+                    font-weight: 700;
+                    letter-spacing: 0.5px;
+                }}
+                #LoginBtn:hover {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:1, y2:0,
+                        stop:0 {_ACCENT2},
+                        stop:1 {_ACCENT3}
+                    );
+                }}
+                #LoginBtn:disabled {{
+                    background: #1E293B;
+                    color: {_MUTED};
+                }}
+            """)
+            self._login_btn.clicked.connect(self._on_enter_authorized)
+            root.addWidget(self._login_btn)
+            root.addSpacing(10)
+
+            # Option to change license key
+            switch_btn = QPushButton("Change or Renew Node License Key")
+            switch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            switch_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    border: none;
+                    color: {_ACCENT3};
+                    font-size: 11px;
+                }}
+                QPushButton:hover {{ color: {_CYAN}; text-decoration: underline; }}
+            """)
+            switch_btn.clicked.connect(self._switch_to_activation_mode)
+            root.addWidget(switch_btn)
+
+        else:
+            # Activation Mode
+            act_badge = QLabel("●  ENTERPRISE NODE ACTIVATION")
+            act_badge.setStyleSheet(f"color: {_CYAN}; font-size: 11px; font-weight: 700; letter-spacing: 1px; background: transparent;")
+            root.addWidget(act_badge)
+            root.addSpacing(6)
+
+            desc = QLabel("Enter your 16-character license key issued by Aegis Cloud:")
+            desc.setStyleSheet(f"color: {_MUTED2}; font-size: 11px; background: transparent;")
+            root.addWidget(desc)
+            root.addSpacing(12)
+
+            self._key_field = _IconLineEdit("AEGIS-XXXX-XXXX-XXXX", icon="🔑", parent=self)
+            self._key_field._edit.setMaxLength(25)
+            self._key_field._edit.setStyleSheet(self._key_field._edit.styleSheet() + "; font-family: monospace; font-weight: bold; letter-spacing: 1px;")
+            self._key_field._edit.textChanged.connect(lambda t: self._key_field._edit.setText(t.upper()) if t != t.upper() else None)
+            self._key_field.returnPressed.connect(self._on_activate_clicked)
+            root.addWidget(self._key_field)
+            root.addSpacing(16)
+
+            self._login_btn = QPushButton("AUTHORIZE & ENTER CONSOLE")
+            self._login_btn.setFixedHeight(48)
+            self._login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._login_btn.setObjectName("LoginBtn")
+            self._login_btn.setStyleSheet(f"""
+                #LoginBtn {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:1, y2:0,
+                        stop:0 {_ACCENT},
+                        stop:1 {_ACCENT2}
+                    );
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 10px;
+                    font-size: 13px;
+                    font-weight: 700;
+                    letter-spacing: 0.5px;
+                }}
+                #LoginBtn:hover {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:1, y2:0,
+                        stop:0 {_ACCENT2},
+                        stop:1 {_ACCENT3}
+                    );
+                }}
+                #LoginBtn:disabled {{
+                    background: #1E293B;
+                    color: {_MUTED};
+                }}
+            """)
+            self._login_btn.clicked.connect(self._on_activate_clicked)
+            root.addWidget(self._login_btn)
+            root.addSpacing(10)
+
+            if self._local_lic:
+                cancel_btn = QPushButton("Cancel (Use current active license)")
+                cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                cancel_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: transparent;
+                        border: none;
+                        color: {_MUTED2};
+                        font-size: 11px;
+                    }}
+                    QPushButton:hover {{ color: {_TEXT}; }}
+                """)
+                cancel_btn.clicked.connect(self._switch_to_authorized_mode)
+                root.addWidget(cancel_btn)
 
         # ── Error banner ─────────────────────────────────────────────────
         self._error_lbl = QLabel("")
         self._error_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._error_lbl.setWordWrap(True)
-        self._error_lbl.setFixedHeight(20)
-        self._error_lbl.setStyleSheet(
-            f"color: {_RED}; font-size: 12px; background: transparent;"
-        )
+        self._error_lbl.setFixedHeight(24)
+        self._error_lbl.setStyleSheet(f"color: {_RED}; font-size: 11px; background: transparent;")
         root.addWidget(self._error_lbl)
 
         root.addStretch()
@@ -768,35 +866,73 @@ class _LoginCard(QFrame):
         root.addLayout(status_row)
 
         # Auto-simulate "checking → ok" for all status badges
-        QTimer.singleShot(900,  lambda: self._db_badge.set_ok("Database"))
-        QTimer.singleShot(1300, lambda: self._agent_badge.set_ok("Agent"))
-        QTimer.singleShot(1700, lambda: self._net_badge.set_ok("Sensor"))
+        QTimer.singleShot(800,  lambda: self._db_badge.set_ok("Database"))
+        QTimer.singleShot(1100, lambda: self._agent_badge.set_ok("Agent"))
+        QTimer.singleShot(1400, lambda: self._net_badge.set_ok("Sensor"))
 
     # -- Actions -------------------------------------------------------------
 
-    def _pass_field_focus(self) -> None:
-        self._pass_field.set_focus()
+    def _copy_hwid(self) -> None:
+        """Copy Hardware ID to system clipboard with instant feedback."""
+        clipboard = QApplication.clipboard()
+        if clipboard:
+            clipboard.setText(self._client.hardware_id)
+            self._copy_btn.setText("✓ Copied")
+            QTimer.singleShot(1500, lambda: self._copy_btn.setText("Copy"))
 
-    def _on_login_clicked(self) -> None:
-        username = self._user_field.text().strip()
-        password = self._pass_field.text()
+    def _switch_to_activation_mode(self) -> None:
+        self._mode = "activate"
+        self._build()
+        if hasattr(self, "_key_field"):
+            self._key_field.set_focus()
 
-        if not username or not password:
-            self._show_error("Please enter your username and password.")
-            if not username:
-                self._user_field.shake()
-            if not password:
-                self._pass_field.shake()
+    def _switch_to_authorized_mode(self) -> None:
+        self._mode = "authorized"
+        self._build()
+
+    def set_focus(self) -> None:
+        if self._mode == "activate" and hasattr(self, "_key_field"):
+            self._key_field.set_focus()
+
+    def _on_enter_authorized(self) -> None:
+        """Sign in using current active local license."""
+        if not self._local_lic:
+            self._switch_to_activation_mode()
+            return
+
+        self._set_loading(True, "Accessing Console…")
+        op_name = self._local_lic.client_name
+        key = self._local_lic.key
+        QTimer.singleShot(600, lambda: self.authenticated.emit(op_name, key))
+
+    def _on_activate_clicked(self) -> None:
+        """Validate license key directly with Firebase Cloud or API."""
+        if not hasattr(self, "_key_field"):
+            return
+
+        key = self._key_field.text().strip().upper()
+        if not key or len(key) < 5:
+            self._show_error("Please enter your 16-character license key.")
+            self._key_field.shake()
             return
 
         self._error_lbl.setText("")
-        self._set_loading(True)
-        # Simulate network latency; real impl replaces with JWT call
-        QTimer.singleShot(800, lambda: self._emit_credentials(username, password))
+        self._set_loading(True, "Verifying with Aegis Cloud…")
 
-    def _emit_credentials(self, username: str, password: str) -> None:
-        self._set_loading(False)
-        self.authenticated.emit(username, password)
+        def _do_verify() -> None:
+            res = self._client.activate_online(key)
+            if res.get("success"):
+                lic = self._client.load_local_license()
+                name = lic.client_name if lic else "Authorized Operator"
+                self._set_loading(False)
+                self.authenticated.emit(name, key)
+            else:
+                self._set_loading(False)
+                err_msg = res.get("message", "License verification failed.")
+                self._show_error(err_msg)
+                self._key_field.shake()
+
+        QTimer.singleShot(100, _do_verify)
 
     def _show_error(self, msg: str) -> None:
         self._error_lbl.setText(f"⚠  {msg}")
@@ -805,15 +941,15 @@ class _LoginCard(QFrame):
         self._error_lbl.setText("")
 
     def show_auth_error(self) -> None:
-        self._show_error("Invalid credentials. Access denied.")
-        self._user_field.shake()
-        self._pass_field.shake()
+        self._show_error("Access denied. License authentication rejected.")
+        if hasattr(self, "_key_field"):
+            self._key_field.shake()
 
-    def _set_loading(self, loading: bool) -> None:
+    def _set_loading(self, loading: bool, text: str = "Authenticating…") -> None:
         self._login_btn.setEnabled(not loading)
-        self._login_btn.setText(
-            "Authenticating…" if loading else "Sign in to Console"
-        )
+        if hasattr(self, "_key_field"):
+            self._key_field.setEnabled(not loading)
+        self._login_btn.setText(text if loading else ("SIGN IN TO SOC CONSOLE" if self._mode == "authorized" else "AUTHORIZE & ENTER CONSOLE"))
 
 
 # ---------------------------------------------------------------------------

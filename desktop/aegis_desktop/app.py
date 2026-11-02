@@ -83,18 +83,6 @@ def run(
         window.show()
         return app.exec()
 
-    # ── Online Cloud License & Hardware Lock Enforcement ───────────────────
-    if check_license:
-        from PySide6.QtWidgets import QDialog
-        from aegis_desktop.services.license_client import LicenseClient
-        from aegis_desktop.widgets.activation_dialog import ActivationDialog
-
-        lic_client = LicenseClient()
-        if not lic_client.load_local_license():
-            dialog = ActivationDialog(client=lic_client)
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return 0
-
     _state: dict[str, object] = {}
 
     def _on_login_success(username: str) -> None:
