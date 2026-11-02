@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableView,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -45,6 +46,8 @@ from aegis_desktop.pages.base import BasePage
 from aegis_desktop.services.arp_radar import ArpDeviceRow, ArpRadarService
 from aegis_desktop.services.dashboard import format_bytes, format_timestamp
 from aegis_desktop.services.live_network import analyze_packet_threat
+from aegis_desktop.widgets.circular_radar import TacticalCircularRadarWidget
+from aegis_desktop.widgets.world_attack_map import GlobalThreatMapContainer
 from aegis_desktop.services.monitoring import (
     CAPTURE_ACTIVE,
     CAPTURE_ERROR,
@@ -884,6 +887,9 @@ class NetworkPage(BasePage):
         self._arp_scan_busy = False
 
         super().__init__(parent)
+        self._arp_timer = QTimer(self)
+        self._arp_timer.setInterval(2000)
+        self._arp_timer.timeout.connect(self._on_arp_timer_tick)
         # Deliberately no automatic collection or capture on open.
         self._show_initial_state()
 
@@ -931,6 +937,8 @@ class NetworkPage(BasePage):
         self._tabs.addTab(self._flow_table, "Flows")
         self._tabs.addTab(self._event_table, "Network Events")
         self._tabs.addTab(self._build_arp_tab(), "ARP Radar (Subnet Devices)")
+        self._threat_map_container = GlobalThreatMapContainer()
+        self._tabs.addTab(self._threat_map_container, "🌍 Global Threat Map")
         self._tabs.currentChanged.connect(self._on_tab_changed)
         layout.addWidget(self._tabs, 1)
         return content
@@ -1005,6 +1013,14 @@ class NetworkPage(BasePage):
     def _on_tab_changed(self, index: int) -> None:
         if index == 4:
             self.refresh_arp(live_sync=False)
+            self._start_async_arp_sync()
+            self._arp_timer.start()
+        else:
+            self._arp_timer.stop()
+
+    def _on_arp_timer_tick(self) -> None:
+        """Periodic real-time poll for the ARP Radar tab."""
+        if self._tabs.currentIndex() == 4 and not self._arp_sync_busy and not self._arp_scan_busy:
             self._start_async_arp_sync()
 
     def _start_async_arp_sync(self) -> None:
@@ -1118,6 +1134,8 @@ class NetworkPage(BasePage):
 
         self._flow_model.set_rows(view.flows)
         self._event_model.set_rows(view.events)
+        if hasattr(self, "_threat_map_container"):
+            self._threat_map_container.update_flows(view.flows, view.events)
 
         if status.running and not view.flows and not view.events:
             self._hint_label.setText("No network activity observed")
@@ -1259,7 +1277,7 @@ class NetworkPage(BasePage):
         bar = QHBoxLayout()
         bar.setSpacing(16)
 
-        hdr_lbl = QLabel("📡 ARP RADAR:")
+        hdr_lbl = QLabel("📡 TACTICAL ARP RADAR:")
         hdr_lbl.setObjectName("FieldKey")
         hdr_lbl.setStyleSheet("font-weight: 700; color: #38BDF8;")
 
@@ -1269,12 +1287,23 @@ class NetworkPage(BasePage):
         self._arp_gw_lbl = QLabel(f"Gateway: {self._arp_service.gateway_ip}")
         self._arp_gw_lbl.setObjectName("CardHint")
 
-        hint_lbl = QLabel("(Use toolbar 'Refresh' to update local subnet devices)")
+        self._scan_now_btn = QToolButton()
+        self._scan_now_btn.setText("⚡ Rescan Subnet")
+        self._scan_now_btn.setObjectName("SecondaryButton")
+        self._scan_now_btn.setStyleSheet(
+            "QToolButton { background-color: #0F172A; border: 1px solid #0284C7; "
+            "color: #38BDF8; font-weight: 700; padding: 4px 12px; border-radius: 4px; }"
+            "QToolButton:hover { background-color: #0369A1; color: #FFFFFF; }"
+        )
+        self._scan_now_btn.clicked.connect(self.scan_arp_subnet)
+
+        hint_lbl = QLabel("(Click any radar blip to inspect device details)")
         hint_lbl.setObjectName("CardHint")
 
         bar.addWidget(hdr_lbl)
         bar.addWidget(self._arp_status_lbl)
         bar.addWidget(self._arp_gw_lbl)
+        bar.addWidget(self._scan_now_btn)
         bar.addWidget(hint_lbl)
         bar.addStretch(1)
 
@@ -1286,8 +1315,42 @@ class NetworkPage(BasePage):
         self._arp_alert_banner.setVisible(False)
         lay.addWidget(self._arp_alert_banner)
 
-        lay.addWidget(self._arp_table, 1)
+        # Split layout: Left = Tactical Circular Radar Canvas | Right = Active Endpoints Table
+        split = QHBoxLayout()
+        split.setSpacing(12)
+
+        # Left Radar Screen Card
+        radar_card = QFrame()
+        radar_card.setObjectName("Card")
+        radar_card.setStyleSheet(
+            "background-color: #050A14; border: 1px solid #1E293B; border-radius: 8px;"
+        )
+        radar_lay = QVBoxLayout(radar_card)
+        radar_lay.setContentsMargins(6, 6, 6, 6)
+
+        self._radar_widget = TacticalCircularRadarWidget()
+        self._radar_widget.device_selected.connect(self._on_radar_device_selected)
+        radar_lay.addWidget(self._radar_widget)
+        split.addWidget(radar_card, 0)
+
+        # Right Endpoints Table
+        table_container = QWidget()
+        table_lay = QVBoxLayout(table_container)
+        table_lay.setContentsMargins(0, 0, 0, 0)
+        table_lay.setSpacing(6)
+        table_lay.addWidget(self._arp_table, 1)
+        split.addWidget(table_container, 1)
+
+        lay.addLayout(split, 1)
         return container
+
+    def _on_radar_device_selected(self, ip: str) -> None:
+        """Select device row in the table when clicked on the radar."""
+        for row in range(self._arp_model.rowCount()):
+            dev = self._arp_model.row_at(row)
+            if dev.ip == ip:
+                self._arp_table.selectRow(row)
+                break
 
     def scan_arp_subnet(self) -> None:
         """Trigger an ARP scan of the local subnet asynchronously without blocking UI."""
@@ -1314,6 +1377,8 @@ class NetworkPage(BasePage):
             self._arp_service.sync_live_endpoints()
         rows = self._arp_service.get_rows()
         self._arp_model.set_rows(tuple(rows))
+        if hasattr(self, "_radar_widget"):
+            self._radar_widget.set_devices(list(rows))
         summary = self._arp_service.get_summary()
         self._arp_status_lbl.setText(
             f"Subnet: {summary['subnet']} | Devices: {summary['total_devices']}"

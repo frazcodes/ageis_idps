@@ -51,6 +51,7 @@ from aegis_desktop.services.incidents import (
 )
 from aegis_desktop.services.processes import MISSING
 from aegis_desktop.theme import state_color
+from aegis_desktop.widgets.attack_graph import InteractiveAttackGraphWidget
 from aegis_shared.enums import RiskLevel
 from aegis_shared.logging import get_logger
 
@@ -376,6 +377,11 @@ class IncidentsPage(BasePage):
         self._canvas_content_layout.setContentsMargins(16, 8, 16, 16)
         self._canvas_content_layout.setSpacing(12)
 
+        # Interactive Attack Kill-Chain Graph Card
+        self._attack_graph_card = self._build_attack_graph_card()
+        self._attack_graph_card.setVisible(False)
+        self._canvas_content_layout.addWidget(self._attack_graph_card)
+
         # Asset Context Card
         self._asset_card = self._build_asset_card()
         self._asset_card.setVisible(False)
@@ -410,6 +416,42 @@ class IncidentsPage(BasePage):
         outer.addWidget(scroll, 1)
 
         return canvas
+
+    def _build_attack_graph_card(self) -> QWidget:
+        """Build the Interactive Attack Kill-Chain Topology Graph Card."""
+        card = QFrame()
+        card.setObjectName("Card")
+        card.setStyleSheet(
+            "QFrame#Card { border-left: 3px solid #ff4444; "
+            "background-color: #0b0f19; border-radius: 6px; border: 1px solid #1e293b; }"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(10)
+
+        heading = QLabel("🕸️ INTERACTIVE ATTACK KILL-CHAIN TOPOLOGY")
+        heading.setObjectName("CardTitle")
+        heading.setStyleSheet(
+            "font-size: 11px; font-weight: 700; color: #ff4444; "
+            "letter-spacing: 0.5px;"
+        )
+        top_row.addWidget(heading)
+        top_row.addStretch(1)
+
+        hint = QLabel("(Drag nodes to explore · Glowing pulses indicate live packet flow)")
+        hint.setObjectName("CardHint")
+        hint.setStyleSheet("color: #64748b; font-size: 10px;")
+        top_row.addWidget(hint)
+
+        layout.addLayout(top_row)
+
+        self._attack_graph = InteractiveAttackGraphWidget()
+        self._attack_graph.setFixedHeight(220)
+        layout.addWidget(self._attack_graph)
+        return card
 
     def _build_asset_card(self) -> QWidget:
         """Build the Asset Context Card showing host details."""
@@ -1091,10 +1133,40 @@ class IncidentsPage(BasePage):
         # Chronological attack timeline & forensic storyline
         self._populate_attack_timeline(incident)
 
-        # Populate action bar
-        self._populate_action_bar(incident)
+        # Extract threat parameters for attack kill-chain graph
+        attacker_ip = "192.168.8.100"
+        target_port = "443"
+        rule_name = getattr(incident, "summary", "Attack Correlation")
+        host_name = getattr(incident, "host_id", "THIS COMPUTER")
+        process_name = "powershell.exe"
+
+        finding_ids = set(getattr(incident, "finding_ids", ()))
+        findings = self._snapshot.findings if self._snapshot is not None else ()
+        for f in findings:
+            if f.finding_id in finding_ids:
+                if f.rule_id:
+                    rule_name = f.rule_id
+                ctx = getattr(f, "context", None)
+                if isinstance(ctx, dict):
+                    if "remote_ip" in ctx:
+                        attacker_ip = str(ctx["remote_ip"])
+                    if "port" in ctx:
+                        target_port = str(ctx["port"])
+                    if "process_name" in ctx:
+                        process_name = str(ctx["process_name"])
+
+        self._attack_graph.load_from_incident(
+            incident_id=getattr(incident, "incident_id", "INC"),
+            attacker_ip=attacker_ip,
+            target_port=target_port,
+            rule_name=rule_name,
+            host_name=host_name,
+            process_name=process_name,
+            severity=level_str,
+        )
 
         # Show canvas components
+        self._attack_graph_card.setVisible(True)
         self._asset_card.setVisible(True)
         self._correlation_card.setVisible(True)
         self._timeline_card.setVisible(True)
@@ -1235,6 +1307,8 @@ class IncidentsPage(BasePage):
         """Clear the investigation canvas."""
         # Hide canvas components
         self._canvas_header.setVisible(False)
+        if hasattr(self, "_attack_graph_card"):
+            self._attack_graph_card.setVisible(False)
         self._asset_card.setVisible(False)
         self._correlation_card.setVisible(False)
         self._timeline_card.setVisible(False)

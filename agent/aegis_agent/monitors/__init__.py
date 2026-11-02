@@ -8,6 +8,8 @@ Implemented:
   discovery with owning-process correlation.
 * ``file_integrity`` (:mod:`aegis_agent.monitors.file_integrity`) - read-only
   baseline diffing of explicitly configured paths with streaming SHA-256.
+* ``usb`` (:mod:`aegis_agent.monitors.usb`) - USB connect/disconnect monitoring,
+  hardware inventory, removable file activity, and weaponised attack detection.
 
 Planned, not yet implemented:
 

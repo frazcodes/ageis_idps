@@ -90,3 +90,14 @@ desktop.ini
 # Tooling
 # ---------------------------------------------------------------------------
 .freebuff/
+
+# ---------------------------------------------------------------------------
+# License Keys & Secrets
+# ---------------------------------------------------------------------------
+serviceAccountKey.json
+**/serviceAccountKey.json
+license.json
+**/license.json
+.env*.local
+license-portal/.next/
+license-portal/node_modules/

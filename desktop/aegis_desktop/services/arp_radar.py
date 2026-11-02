@@ -2,16 +2,22 @@
 
 Bridges the network sensor ARP tracking engine to the PySide6 UI:
 - Discovers local gateway and host parameters.
-- Seeds device directory from OS ARP table and passive/active Scapy frames.
+- Multi-vector device discovery: UDP wake-up probes, Win32 SendARP API, OS ARP cache, and Scapy L2 ARP.
 - Formats device rows and alert banners for the desktop console.
+- Real-time endpoint liveness tracking for automatic connect/disconnect detection.
 """
 
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
+import os
 import re
 import socket
+import struct
 import subprocess
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +29,30 @@ from aegis_network_sensor.arp_radar import (
 from aegis_shared.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _send_arp_win32(ip: str) -> str | None:
+    """Resolve an IP address to its hardware MAC via native Windows Win32 SendARP API.
+
+    This bypasses ICMP firewall blocks and router broadcast isolation, querying
+    the physical layer directly from the Windows NDIS stack.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        dest_ip = struct.unpack("<I", socket.inet_aton(ip))[0]
+        mac_buf = (ctypes.c_byte * 6)()
+        mac_len = ctypes.c_ulong(6)
+        res = ctypes.windll.iphlpapi.SendARP(
+            dest_ip, 0, ctypes.byref(mac_buf), ctypes.byref(mac_len)
+        )
+        if res == 0:
+            return ":".join(f"{b & 0xFF:02x}" for b in bytearray(mac_buf))
+    except Exception as exc:
+        logger.debug("Win32 SendARP error for %s: %s", ip, exc)
+    return None
 
 
 @dataclass(frozen=True)
@@ -46,15 +76,39 @@ class ArpRadarService:
     def __init__(
         self, tracker: ArpTracker | None = None, *, auto_seed: bool = True
     ) -> None:
+        self._is_default_tracker = tracker is None
         self.tracker = tracker or ArpTracker()
         self._gateway_ip: str = ""
         self._gateway_mac: str = ""
         self._local_ip: str = ""
         self._local_mac: str = ""
         self._subnet_cidr: str = ""
+        self._missed_probes: dict[str, int] = {}
+        self._known_history_ips: set[str] = set()
+        self._last_full_sweep_time: float = 0.0
         self._detect_local_network()
-        if auto_seed and tracker is None:
+        if auto_seed and self._is_default_tracker:
+            self._seed_local_endpoints()
             self.read_system_arp_table()
+            if self._subnet_cidr:
+                self._sweep_subnet(self._subnet_cidr)
+                self.read_system_arp_table()
+
+    def _seed_local_endpoints(self) -> None:
+        """Register local host and gateway into tracker when auto-seeding."""
+        if self._local_ip and self._local_ip != "127.0.0.1" and self._local_mac:
+            self.tracker.observe_arp(
+                src_ip=self._local_ip,
+                src_mac=self._local_mac,
+                op=2,
+            )
+        if self._gateway_ip and not self._gateway_mac:
+            gw_mac = _send_arp_win32(self._gateway_ip)
+            if gw_mac:
+                self._gateway_mac = normalize_mac(gw_mac)
+                if not self.tracker.known_gateway_mac:
+                    self.tracker.known_gateway_mac = self._gateway_mac
+                self.tracker.observe_arp(src_ip=self._gateway_ip, src_mac=self._gateway_mac, op=2)
 
     def _detect_local_network(self) -> None:
         """Detect local IP, default gateway, and subnet range."""
@@ -99,6 +153,21 @@ class ArpRadarService:
                     if not self.tracker.known_gateway_ip:
                         self.tracker.known_gateway_ip = self._gateway_ip
 
+        # Detect local machine MAC address
+        if not self._local_mac:
+            try:
+                if self._local_ip and not self._local_ip.startswith("127."):
+                    active_mac = _send_arp_win32(self._local_ip)
+                    if active_mac:
+                        self._local_mac = normalize_mac(active_mac)
+                if not self._local_mac:
+                    raw_mac = f"{uuid.getnode():012x}"
+                    self._local_mac = ":".join(raw_mac[i : i + 2] for i in range(0, 12, 2))
+                if not self.tracker.local_host_mac:
+                    self.tracker.local_host_mac = self._local_mac
+            except Exception as exc:
+                logger.debug("Could not determine local MAC: %s", exc)
+
     @property
     def gateway_ip(self) -> str:
         return self._gateway_ip or "—"
@@ -130,7 +199,7 @@ class ArpRadarService:
             # Match IPv4 addresses followed by MAC addresses
             # Format: 192.168.1.1   00-11-22-33-44-55   dynamic
             pattern = re.compile(
-                r"(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2}[:-][0-9a-fA-F]{2})"
+                r"(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2})"
             )
             for match in pattern.finditer(output):
                 ip, mac = match.groups()
@@ -141,6 +210,7 @@ class ArpRadarService:
                     continue
 
                 discovered_ips.add(ip)
+                self._known_history_ips.add(ip)
                 new_alerts = self.tracker.observe_arp(
                     src_ip=ip,
                     src_mac=mac_norm,
@@ -148,77 +218,112 @@ class ArpRadarService:
                 )
                 alerts.extend(new_alerts)
 
-            if sync_active:
+            if sync_active and discovered_ips:
                 self.tracker.sync_active_ips(discovered_ips)
         except Exception as exc:
             logger.debug("Failed reading system ARP cache: %s", exc)
         return alerts
 
-    def sync_live_endpoints(self) -> list[str]:
-        """Perform a real-time liveness check on active subnet endpoints.
+    def _probe_endpoint_liveness(self, ip: str) -> bool:
+        """Check if an endpoint is alive using SendARP hardware probe and ICMP fallback."""
+        # 1. Native Win32 SendARP check (hardware L2 resolution directly via NDIS)
+        mac = _send_arp_win32(ip)
+        if mac:
+            mac_norm = normalize_mac(mac)
+            self.tracker.observe_arp(src_ip=ip, src_mac=mac_norm, op=2)
+            self._known_history_ips.add(ip)
+            return True
 
-        Fast unicast ping (150ms timeout) checks whether currently tracked endpoint devices
-        (e.g., smartphones, laptops, IoT nodes) are still connected to the subnet.
-        If a device disconnected or turned off its Wi-Fi, it fails the probe and is immediately
-        pruned from the active ARP Radar directory.
+        # 2. ICMP ping fallback (wakes up sleeping mobile and triggers kernel ARP request)
+        with contextlib.suppress(Exception):
+            cmd = ["ping", "-n", "1", "-w", "150", ip] if os.name == "nt" else ["ping", "-c", "1", "-W", "1", ip]
+            res = subprocess.run(  # noqa: S603
+                cmd,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=0.3,
+            )
+            # Ping forces Windows kernel to send ARP and cache response even if phone drops ICMP
+            cached_mac = _send_arp_win32(ip)
+            if cached_mac:
+                mac_norm = normalize_mac(cached_mac)
+                self.tracker.observe_arp(src_ip=ip, src_mac=mac_norm, op=2)
+                self._known_history_ips.add(ip)
+                return True
+            if res.returncode == 0:
+                self._known_history_ips.add(ip)
+                return True
+
+        return False
+
+    def sync_live_endpoints(self) -> list[str]:
+        """Perform a real-time liveness check on active subnet endpoints and known history.
+
+        Uses native Win32 SendARP hardware probes to reliably detect smartphones,
+        laptops, and IoT nodes even when low-power mode blocks ICMP echo.
+        - When a device disconnects or leaves Wi-Fi, it is immediately pruned.
+        - When a previously seen device reconnects, it is IMMEDIATELY detected and restored.
+        - Periodically triggers background subnet sweep to discover newly joined devices.
         """
-        import concurrent.futures
+        now = time.monotonic()
+        # Periodically trigger a quick background sweep every 15s to catch brand-new devices
+        if self._subnet_cidr and (now - self._last_full_sweep_time > 15.0):
+            self._last_full_sweep_time = now
+            self._sweep_subnet(self._subnet_cidr)
+            self.read_system_arp_table(sync_active=False)
 
         devices = self.tracker.get_devices()
-        # Endpoints to check (excluding default gateway and local host)
-        endpoints = [
+        active_ips = {
             d.ip
             for d in devices
             if not d.is_gateway
             and not d.is_local_host
             and d.ip != self._local_ip
             and d.ip != self._gateway_ip
-        ]
+        }
+        # Include history IPs so disconnected devices are continuously probed for reconnection
+        all_candidates = list((active_ips | self._known_history_ips) - {self._local_ip, self._gateway_ip})
 
-        if not endpoints:
-            self.read_system_arp_table(sync_active=True)
+        if not all_candidates:
+            self.read_system_arp_table(sync_active=False)
             return []
 
         dead_ips: list[str] = []
 
         def _check_endpoint(ip: str) -> tuple[str, bool]:
-            with contextlib.suppress(Exception):
-                res = subprocess.run(  # noqa: S603
-                    ["ping", "-n", "1", "-w", "100", ip],  # noqa: S607
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=0.25,
-                )
-                return ip, (res.returncode == 0)
-            return ip, False
+            alive = self._probe_endpoint_liveness(ip)
+            return ip, alive
 
         try:
             with concurrent.futures.ThreadPoolExecutor(
-                max_workers=min(8, len(endpoints))
+                max_workers=min(32, max(4, len(all_candidates)))
             ) as executor:
-                results = list(executor.map(_check_endpoint, endpoints))
+                results = list(executor.map(_check_endpoint, all_candidates))
                 for ip, alive in results:
-                    if not alive:
-                        dead_ips.append(ip)
-                        self.tracker.remove_device(ip)
+                    if alive:
+                        self._missed_probes[ip] = 0
+                    else:
+                        misses = self._missed_probes.get(ip, 0) + 1
+                        self._missed_probes[ip] = misses
+                        if misses >= 1:
+                            if ip in active_ips:
+                                dead_ips.append(ip)
+                                self.tracker.remove_device(ip)
         except Exception as exc:
             logger.debug("Endpoint liveness probe encountered error: %s", exc)
 
-        # Harvest OS ARP table to sync any newly cached devices
-        self.read_system_arp_table(sync_active=True)
+        # Harvest OS ARP table to sync any newly cached devices (non-destructive)
+        self.read_system_arp_table(sync_active=False)
         return dead_ips
 
-    def _sweep_subnet_ping(self, subnet_cidr: str) -> None:
-        """Perform a fast concurrent ping sweep to wake up sleeping Wi-Fi / mobile devices.
+    def _sweep_subnet(self, subnet_cidr: str) -> None:
+        """Perform a fast multi-worker concurrent ping sweep across the subnet.
 
-        Wi-Fi routers (especially 4G Wingles and mobile hotspots) suppress L2 broadcast ARP
-        between wireless stations to save power. Probing the /24 subnet triggers the OS network
-        stack to resolve ARP for every active node, immediately populating the OS ARP cache.
+        Sends 1-packet ICMP probes (w=80ms) concurrently across 1..254 with 64 threads.
+        This forces the Windows kernel and router switch to send ARP requests and populate
+        the OS ARP cache with hardware MAC addresses for all active endpoints.
         """
-        import concurrent.futures
-
-        # Extract base /24 prefix
         parts = subnet_cidr.split("/")[0].split(".")
         if len(parts) < 3:
             return
@@ -226,27 +331,28 @@ class ArpRadarService:
         ips = [f"{base}.{i}" for i in range(1, 255)]
 
         def _ping_host(ip: str) -> None:
+            cmd = ["ping", "-n", "1", "-w", "80", ip] if os.name == "nt" else ["ping", "-c", "1", "-W", "1", ip]
             with contextlib.suppress(Exception):
                 subprocess.run(  # noqa: S603
-                    ["ping", "-n", "1", "-w", "100", ip],  # noqa: S607
+                    cmd,
                     check=False,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    timeout=0.25,
+                    timeout=0.2,
                 )
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=64) as executor:
                 list(executor.map(_ping_host, ips))
         except Exception as exc:
-            logger.debug("Subnet ping sweep encountered error: %s", exc)
+            logger.debug("Subnet ping sweep error: %s", exc)
 
     def scan_subnet(
         self, custom_cidr: str | None = None, *, probe_sweep: bool = True
     ) -> tuple[int, list[ArpAlert]]:
         """Trigger an active ARP scan of the local subnet.
 
-        1. Performs a fast concurrent ping sweep to wake up sleeping Wi-Fi endpoints.
+        1. Performs multi-vector UDP poke & ARP sweep to discover all mobile/endpoint devices.
         2. Reads the system ARP table cache.
         3. Attempts Scapy L2 ARP broadcast probe if supported.
         """
@@ -254,23 +360,32 @@ class ArpRadarService:
         target_subnet = custom_cidr or self.subnet_cidr
 
         if probe_sweep:
-            self._sweep_subnet_ping(target_subnet)
+            self._sweep_subnet(target_subnet)
 
         # 1. Immediate system ARP table harvest
         sys_alerts = self.read_system_arp_table()
         all_alerts.extend(sys_alerts)
+
+        # Directly probe all known history endpoints via SendARP
+        for hist_ip in list(self._known_history_ips):
+            hist_mac = _send_arp_win32(hist_ip)
+            if hist_mac:
+                obs_alerts = self.tracker.observe_arp(
+                    src_ip=hist_ip,
+                    src_mac=normalize_mac(hist_mac),
+                    op=2,
+                )
+                all_alerts.extend(obs_alerts)
 
         # 2. Scapy active ARP broadcast if sensor extra is available
         try:
             import scapy.all as scapy_all
             from scapy.layers.l2 import ARP, Ether
 
-            # Build ARP who-has broadcast
             arp_req = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=target_subnet)
-            # Send and receive ARP responses (timeout bounded to 1.5s)
             ans, _ = scapy_all.srp(
                 arp_req,
-                timeout=1.5,
+                timeout=1.0,
                 verbose=False,
                 retry=0,
             )
@@ -298,7 +413,7 @@ class ArpRadarService:
             if dev.is_suspicious:
                 role = "🚨 SUSPICIOUS / SPOOFER"
                 status = "ATTACK DETECTED"
-            elif dev.is_gateway:
+            elif dev.is_gateway or dev.ip == self._gateway_ip:
                 role = "🌐 DEFAULT GATEWAY"
                 status = "ACTIVE"
             elif dev.is_local_host or dev.ip == self._local_ip:

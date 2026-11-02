@@ -68,6 +68,21 @@ class AgentSettings(AegisSettings):
     enable_connection_monitor: bool = False
     enable_file_integrity: bool = False
     enable_yara: bool = False
+    enable_usb_monitor: bool = False
+
+    # --- USB attack detection monitoring ---------------------------------
+    usb_monitor_interval: int = Field(
+        default=5,
+        ge=1,
+        le=3600,
+        description="Seconds between USB device and removable storage scans.",
+    )
+    usb_scan_depth: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Directory recursion depth when scanning removable drive contents.",
+    )
 
     # --- File integrity monitoring (opt-in, explicit paths only) ----------
     file_integrity_paths: list[str] = Field(

@@ -41,6 +41,9 @@ class EventType(StrEnum):
     INTEGRITY_VIOLATION = "host.integrity.violation"
     YARA_MATCH = "host.yara.match"
     SYSTEM_INVENTORY = "host.system.inventory"
+    USB_CONNECTED = "host.usb.connected"
+    USB_DISCONNECTED = "host.usb.disconnected"
+    USB_THREAT_DETECTED = "host.usb.threat"
 
     # --- Network sensor ---------------------------------------------------
     #: A single passively observed packet, normalized for later analysis.

@@ -362,3 +362,38 @@ def test_arp_service_sync_live_endpoints_disconnect() -> None:
     remaining = [d.ip for d in service.tracker.get_devices()]
     assert "192.0.2.254" not in remaining
     assert "192.168.1.1" in remaining
+
+
+def test_arp_service_sync_live_endpoints_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ArpRadarService remembers history and auto-restores reconnected devices in real-time."""
+    tracker = ArpTracker(known_gateway_ip="192.168.1.1", local_host_ip="192.168.1.10")
+    tracker.observe_arp(src_ip="192.168.1.1", src_mac="00:01:42:11:22:33")
+    tracker.observe_arp(src_ip="192.168.1.55", src_mac="90:cb:a3:00:11:22")
+
+    service = ArpRadarService(tracker=tracker, auto_seed=False)
+    service._gateway_ip = "192.168.1.1"
+    service._local_ip = "192.168.1.10"
+    service._known_history_ips.add("192.168.1.55")
+
+    # Step 1: Device disconnects (probe returns False)
+    monkeypatch.setattr(service, "_probe_endpoint_liveness", lambda ip: False)
+    dead = service.sync_live_endpoints()
+    assert "192.168.1.55" in dead
+    assert "192.168.1.55" not in [d.ip for d in service.tracker.get_devices()]
+    # But device is preserved in history
+    assert "192.168.1.55" in service._known_history_ips
+
+    # Step 2: Device reconnects to Wi-Fi (probe returns True and restores tracker)
+    def _mock_reconnect(ip: str) -> bool:
+        if ip == "192.168.1.55":
+            service.tracker.observe_arp(src_ip=ip, src_mac="90:cb:a3:00:11:22", op=2)
+            return True
+        return False
+
+    monkeypatch.setattr(service, "_probe_endpoint_liveness", _mock_reconnect)
+    service.sync_live_endpoints()
+
+    # Device is immediately restored in tracker!
+    active_ips = [d.ip for d in service.tracker.get_devices()]
+    assert "192.168.1.55" in active_ips
+

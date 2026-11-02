@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import sys
+import warnings
+
+warnings.filterwarnings("ignore", message=".*Diffie-Hellman.*")
+warnings.filterwarnings("ignore", message=".*FFDH.*")
 
 from aegis_desktop.app import run
 

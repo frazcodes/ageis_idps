@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QTableView,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +34,7 @@ from aegis_desktop.pages.graphs import (
     RiskGaugeWidget,
     TopologyRadarWidget,
 )
+from aegis_desktop.widgets.usb_shield import UsbShieldWidget
 from aegis_desktop.services.alerts import AlertService
 from aegis_desktop.services.audio_alert import get_audio_alert_service
 from aegis_desktop.services.dashboard import (
@@ -100,8 +102,11 @@ def _posture_card(
     frame = QFrame()
     frame.setObjectName("Card")
     frame.setStyleSheet(
-        f"QFrame#Card {{ background-color: #0E1726; border: 1px solid #1E293B; "
-        f"border-left: 4px solid {accent_color}; border-radius: 10px; }}"
+        f"QFrame#Card {{ "
+        f"background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0F172A, stop:1 #070D18); "
+        f"border: 1px solid rgba(56, 189, 248, 0.15); "
+        f"border-left: 4px solid {accent_color}; "
+        f"border-radius: 10px; }}"
     )
 
     outer = QVBoxLayout(frame)
@@ -342,12 +347,10 @@ class DashboardPage(BasePage):
         layout.addLayout(posture_row)
 
         # --- MITRE ATT&CK Kill-Chain Progression --------------------------
-        layout.addWidget(self._make_section_label("MITRE ATT&CK KILL-CHAIN PROGRESSION"))
         self._mitre_widget = MitreKillChainWidget()
         self._mitre_widget.tactic_selected.connect(self._on_mitre_tactic_selected)
-        layout.addWidget(self._mitre_widget)
 
-        # --- Threat Feed (left 65%) + Live Topology Radar (right 35%) -----
+        # --- Threat Feed (left 55%) + Live Topology Radar (right 45%) -----
         mid_row = QHBoxLayout()
         mid_row.setSpacing(14)
 
@@ -400,8 +403,6 @@ class DashboardPage(BasePage):
         radar_col.addWidget(self._topology_radar)
         mid_row.addLayout(radar_col, 9)
 
-        layout.addLayout(mid_row)
-
         # --- Live Network Activity Table + SIEM Filter Bar ----------------
         net_hdr_row = QHBoxLayout()
         net_hdr_row.setSpacing(12)
@@ -413,7 +414,6 @@ class DashboardPage(BasePage):
         )
         self._live_network_filter.setFixedWidth(340)
         net_hdr_row.addWidget(self._live_network_filter)
-        layout.addLayout(net_hdr_row)
 
         self._live_network_model = LiveNetworkTableModel(self)
         self._live_network_proxy = QSortFilterProxyModel(self)
@@ -442,13 +442,11 @@ class DashboardPage(BasePage):
         self._live_network_table.horizontalHeader().setStretchLastSection(True)
         self._live_network_table.horizontalHeader().setSectionsMovable(True)
         self._live_network_table.setMinimumHeight(150)
-        self._live_network_table.setMaximumHeight(220)
+        self._live_network_table.setMaximumHeight(260)
         for idx, width in enumerate(_PORT_WIDTHS):
             self._live_network_table.setColumnWidth(idx, width)
-        layout.addWidget(self._live_network_table)
 
         # --- Network Summary (compact) ---
-        layout.addWidget(self._make_section_label("NETWORK SUMMARY"))
         net_summary_row = QHBoxLayout()
         net_summary_row.setSpacing(12)
         for label, key in (
@@ -462,10 +460,8 @@ class DashboardPage(BasePage):
             card, value_label = self._metric_card(label)
             self._network_summary_labels[key] = value_label
             net_summary_row.addWidget(card)
-        layout.addLayout(net_summary_row)
 
-        # --- Contextual Telemetry graphs (bottom section) ---
-        layout.addWidget(self._make_section_label("CONTEXTUAL TELEMETRY & RISK TRENDS"))
+        # --- Contextual Telemetry graphs ---
         graphs_row = QHBoxLayout()
         graphs_row.setSpacing(14)
         self._network_graph = LineGraphWidget(
@@ -490,21 +486,8 @@ class DashboardPage(BasePage):
         )
         self._risk_graph.setMinimumHeight(140)
         graphs_row.addWidget(self._risk_graph, 1)
-        layout.addLayout(graphs_row)
 
-        # --- Hidden legacy containers (backward-compat for tests) ----------
-        self._findings_container = QWidget()
-        self._findings_layout = QVBoxLayout(self._findings_container)
-        self._findings_layout.setContentsMargins(0, 0, 0, 0)
-        self._findings_layout.setSpacing(4)
-        self._findings_container.setVisible(False)
-
-        self._incidents_container = QWidget()
-        self._incidents_layout = QVBoxLayout(self._incidents_container)
-        self._incidents_layout.setContentsMargins(0, 0, 0, 0)
-        self._incidents_layout.setSpacing(4)
-        self._incidents_container.setVisible(False)
-
+        # --- Contextual Explainability & Relationships Containers ---------
         self._explanation_container = QFrame()
         self._explanation_container.setObjectName("Card")
         explanation_inner = QVBoxLayout(self._explanation_container)
@@ -519,13 +502,103 @@ class DashboardPage(BasePage):
         self._explanation_content_layout.setSpacing(4)
         self._explanation_content.setVisible(False)
         explanation_inner.addWidget(self._explanation_content)
-        self._explanation_container.setVisible(False)
 
         self._relationships_container = QWidget()
         self._relationships_layout = QVBoxLayout(self._relationships_container)
         self._relationships_layout.setContentsMargins(0, 0, 0, 0)
         self._relationships_layout.setSpacing(4)
-        self._relationships_container.setVisible(False)
+
+        # --- Operational Cockpit Tab Widget (Fast, Segmented, Zero-Clutter) ---
+        self._cockpit_tabs = QTabWidget()
+        self._cockpit_tabs.setObjectName("CockpitTabs")
+        self._cockpit_tabs.setStyleSheet(
+            "QTabWidget#CockpitTabs::pane {"
+            "  background-color: #060B15;"
+            "  border: 1px solid rgba(56, 189, 248, 0.2);"
+            "  border-radius: 8px;"
+            "  padding: 8px;"
+            "}"
+            "QTabWidget#CockpitTabs > QTabBar::tab {"
+            "  background-color: #0B1322;"
+            "  color: #94A3B8;"
+            "  font-size: 11px;"
+            "  font-weight: 700;"
+            "  padding: 8px 18px;"
+            "  border: 1px solid #1E293B;"
+            "  border-bottom: none;"
+            "  border-top-left-radius: 6px;"
+            "  border-top-right-radius: 6px;"
+            "  margin-right: 4px;"
+            "}"
+            "QTabWidget#CockpitTabs > QTabBar::tab:selected {"
+            "  background-color: #0E1726;"
+            "  color: #38BDF8;"
+            "  border-top: 2px solid #38BDF8;"
+            "  border-bottom: 1px solid #0E1726;"
+            "}"
+            "QTabWidget#CockpitTabs > QTabBar::tab:hover:!selected {"
+            "  background-color: #172554;"
+            "  color: #F1F5F9;"
+            "}"
+        )
+
+        # Tab 1: 🎯 Threat Intel & Kill-Chain
+        threats_page = QWidget()
+        threats_lay = QVBoxLayout(threats_page)
+        threats_lay.setContentsMargins(4, 4, 4, 4)
+        threats_lay.setSpacing(10)
+        threats_lay.addWidget(self._make_section_label("MITRE ATT&CK KILL-CHAIN PROGRESSION"))
+        threats_lay.addWidget(self._mitre_widget)
+        threats_lay.addLayout(mid_row)
+        self._cockpit_tabs.addTab(threats_page, "🎯 Threat Intel & Kill-Chain")
+
+        # Tab 2: ⚡ Live Network Telemetry
+        network_page = QWidget()
+        network_lay = QVBoxLayout(network_page)
+        network_lay.setContentsMargins(4, 4, 4, 4)
+        network_lay.setSpacing(10)
+        network_lay.addWidget(self._make_section_label("NETWORK SUMMARY"))
+        network_lay.addLayout(net_summary_row)
+        network_lay.addLayout(net_hdr_row)
+        network_lay.addWidget(self._live_network_table)
+        self._cockpit_tabs.addTab(network_page, "⚡ Live Network Telemetry")
+
+        # Tab 3: 📈 Risk & Telemetry Trends
+        trends_page = QWidget()
+        trends_lay = QVBoxLayout(trends_page)
+        trends_lay.setContentsMargins(4, 4, 4, 4)
+        trends_lay.setSpacing(10)
+        trends_lay.addWidget(self._make_section_label("CONTEXTUAL TELEMETRY & RISK TRENDS"))
+        trends_lay.addLayout(graphs_row)
+        self._cockpit_tabs.addTab(trends_page, "📈 Risk & Telemetry Trends")
+
+        # Tab 4: 🔍 Contextual Diagnostics
+        explain_page = QWidget()
+        explain_lay = QVBoxLayout(explain_page)
+        explain_lay.setContentsMargins(4, 4, 4, 4)
+        explain_lay.setSpacing(10)
+        explain_lay.addWidget(self._explanation_container)
+        explain_lay.addWidget(self._relationships_container)
+        self._cockpit_tabs.addTab(explain_page, "🔍 Contextual Explainability")
+
+        # Tab 5: 🛡️ USB Attack Shield & Hardware Defense
+        self._usb_shield = UsbShieldWidget()
+        self._cockpit_tabs.addTab(self._usb_shield, "🛡️ USB Attack Shield")
+
+        layout.addWidget(self._cockpit_tabs)
+
+        # --- Hidden legacy containers (backward-compat for tests) ----------
+        self._findings_container = QWidget()
+        self._findings_layout = QVBoxLayout(self._findings_container)
+        self._findings_layout.setContentsMargins(0, 0, 0, 0)
+        self._findings_layout.setSpacing(4)
+        self._findings_container.setVisible(False)
+
+        self._incidents_container = QWidget()
+        self._incidents_layout = QVBoxLayout(self._incidents_container)
+        self._incidents_layout.setContentsMargins(0, 0, 0, 0)
+        self._incidents_layout.setSpacing(4)
+        self._incidents_container.setVisible(False)
 
         # Hidden risk/alerts row + host/network cards (for property accessors)
         self._risk_context_label = QLabel("")
@@ -538,8 +611,6 @@ class DashboardPage(BasePage):
 
         layout.addWidget(self._findings_container)
         layout.addWidget(self._incidents_container)
-        layout.addWidget(self._explanation_container)
-        layout.addWidget(self._relationships_container)
 
         # Hidden host + network cards (for backward-compat accessors / tests)
         self._hidden_host_card = self._build_host_card()

@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import os
 import sys
+import warnings
+
+# Silence noisy third-party deprecation warnings (e.g. Scapy FFDH)
+warnings.filterwarnings("ignore", message=".*Diffie-Hellman.*")
+warnings.filterwarnings("ignore", message=".*FFDH.*")
 
 from PySide6.QtWidgets import QApplication
 
@@ -54,11 +59,12 @@ def run(
     splash: bool = True,
     login: bool = True,
     login_bypass: bool = False,
+    check_license: bool = True,
 ) -> int:
     """Create the application, show the login screen, splash, then main window.
 
     Flow (default):
-        LoginWindow  ──(success)──►  SplashScreen  ──(done)──►  MainWindow
+        ActivationDialog (if unactivated) ──► LoginWindow ──► SplashScreen ──► MainWindow
 
     Args:
         argv: Command-line arguments forwarded to QApplication.
@@ -66,6 +72,7 @@ def run(
         login: Show the login screen before everything else.
         login_bypass: Skip credential validation in LoginWindow (dev mode).
             Set to ``True`` during development so any username/password works.
+        check_license: Enforce hardware ID and online license key verification.
     """
     app = create_application(argv)
 
@@ -75,6 +82,18 @@ def run(
         window = MainWindow()
         window.show()
         return app.exec()
+
+    # ── Online Cloud License & Hardware Lock Enforcement ───────────────────
+    if check_license:
+        from PySide6.QtWidgets import QDialog
+        from aegis_desktop.services.license_client import LicenseClient
+        from aegis_desktop.widgets.activation_dialog import ActivationDialog
+
+        lic_client = LicenseClient()
+        if not lic_client.load_local_license():
+            dialog = ActivationDialog(client=lic_client)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return 0
 
     _state: dict[str, object] = {}
 
