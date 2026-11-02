@@ -15,64 +15,88 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* ── Cyber Themes ────────────────────────────────────────────────────────── */
+/* ── Ultra-Refined Cyber Themes ────────────────────────────────────────── */
 /* 1. Dark Theme (Obsidian Cyber) */
 .theme-dark {
   --bg-primary: #030712;
-  --panel-bg: rgba(10, 17, 36, 0.72);
-  --panel-border: rgba(56, 189, 248, 0.2);
-  --panel-border-hover: rgba(56, 189, 248, 0.5);
+  --panel-bg: rgba(10, 17, 36, 0.78);
+  --panel-border: rgba(56, 189, 248, 0.22);
+  --panel-border-hover: rgba(56, 189, 248, 0.65);
+  --panel-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.6);
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-tertiary: #64748b;
-  --input-bg: rgba(2, 6, 23, 0.9);
-  --input-border: rgba(51, 65, 85, 0.8);
-  --table-bg: rgba(2, 6, 23, 0.75);
-  --table-header: rgba(15, 23, 42, 0.95);
-  --table-row-hover: rgba(6, 182, 212, 0.1);
+  --accent-color: #06b6d4;
+  --accent-text: #22d3ee;
+  --input-bg: rgba(2, 6, 23, 0.92);
+  --input-border: rgba(51, 65, 85, 0.85);
+  --table-bg: rgba(2, 6, 23, 0.8);
+  --table-header: rgba(15, 23, 42, 0.98);
+  --table-row-hover: rgba(6, 182, 212, 0.12);
   --table-divide: rgba(30, 41, 59, 0.7);
-  --grid-line: rgba(14, 165, 233, 0.07);
+  --grid-line: rgba(14, 165, 233, 0.08);
+  --toggler-bg: rgba(2, 6, 23, 0.85);
+  --toggler-border: rgba(51, 65, 85, 0.8);
+  --badge-pill-bg: rgba(8, 47, 73, 0.6);
+  --badge-pill-border: rgba(14, 165, 233, 0.5);
+  --badge-pill-text: #38bdf8;
 }
 
 /* 2. Blue Theme (Cyber Midnight Navy) */
 .theme-blue {
   --bg-primary: #061329;
-  --panel-bg: rgba(12, 27, 60, 0.82);
-  --panel-border: rgba(96, 165, 250, 0.28);
-  --panel-border-hover: rgba(96, 165, 250, 0.65);
+  --panel-bg: rgba(12, 27, 60, 0.85);
+  --panel-border: rgba(96, 165, 250, 0.32);
+  --panel-border-hover: rgba(96, 165, 250, 0.75);
+  --panel-shadow: 0 10px 40px -10px rgba(3, 10, 30, 0.7);
   --text-primary: #ffffff;
   --text-secondary: #93c5fd;
   --text-tertiary: #60a5fa;
+  --accent-color: #3b82f6;
+  --accent-text: #60a5fa;
   --input-bg: rgba(8, 20, 48, 0.95);
-  --input-border: rgba(37, 99, 235, 0.45);
-  --table-bg: rgba(8, 20, 48, 0.85);
-  --table-header: rgba(17, 38, 80, 0.95);
-  --table-row-hover: rgba(37, 99, 235, 0.18);
-  --table-divide: rgba(30, 58, 138, 0.5);
-  --grid-line: rgba(96, 165, 250, 0.1);
+  --input-border: rgba(37, 99, 235, 0.5);
+  --table-bg: rgba(8, 20, 48, 0.88);
+  --table-header: rgba(17, 38, 80, 0.98);
+  --table-row-hover: rgba(37, 99, 235, 0.2);
+  --table-divide: rgba(30, 58, 138, 0.6);
+  --grid-line: rgba(96, 165, 250, 0.12);
+  --toggler-bg: rgba(8, 20, 48, 0.9);
+  --toggler-border: rgba(37, 99, 235, 0.5);
+  --badge-pill-bg: rgba(30, 58, 138, 0.5);
+  --badge-pill-border: rgba(96, 165, 250, 0.5);
+  --badge-pill-text: #93c5fd;
 }
 
-/* 3. Light Theme (Clean Tech Frosted Glass) */
+/* 3. Light Theme (Clean Tech Frosted Glass - High Contrast) */
 .theme-light {
-  --bg-primary: #f8fafc;
-  --panel-bg: rgba(255, 255, 255, 0.88);
-  --panel-border: rgba(203, 213, 225, 0.9);
-  --panel-border-hover: rgba(14, 165, 233, 0.6);
+  --bg-primary: #f1f5f9;
+  --panel-bg: rgba(255, 255, 255, 0.96);
+  --panel-border: #cbd5e1;
+  --panel-border-hover: #0284c7;
+  --panel-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 4px 12px -2px rgba(15, 23, 42, 0.04);
   --text-primary: #0f172a;
-  --text-secondary: #475569;
+  --text-secondary: #334155;
   --text-tertiary: #64748b;
+  --accent-color: #0284c7;
+  --accent-text: #0369a1;
   --input-bg: #ffffff;
   --input-border: #cbd5e1;
-  --table-bg: rgba(255, 255, 255, 0.92);
-  --table-header: #f1f5f9;
-  --table-row-hover: rgba(14, 165, 233, 0.08);
+  --table-bg: #ffffff;
+  --table-header: #f8fafc;
+  --table-row-hover: #f1f5f9;
   --table-divide: #e2e8f0;
-  --grid-line: rgba(14, 165, 233, 0.06);
+  --grid-line: rgba(14, 165, 233, 0.09);
+  --toggler-bg: #e2e8f0;
+  --toggler-border: #cbd5e1;
+  --badge-pill-bg: #e0f2fe;
+  --badge-pill-border: #7dd3fc;
+  --badge-pill-text: #0369a1;
 }
 
 /* Cyber Grid background */
 .cyber-grid {
-  background-size: 40px 40px;
+  background-size: 36px 36px;
   background-image: 
     linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
     linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
@@ -81,16 +105,15 @@ body {
 /* Dynamic Glass Panel */
 .glass-panel {
   background: var(--panel-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--panel-border);
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.25);
-  transition: all 0.3s ease;
+  box-shadow: var(--panel-shadow);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .glass-panel:hover {
   border-color: var(--panel-border-hover);
-  box-shadow: 0 0 30px rgba(14, 165, 233, 0.15);
 }
 
 /* Cyber Scanning Line */
@@ -105,8 +128,8 @@ body {
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
@@ -114,8 +137,8 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: #64748b;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {

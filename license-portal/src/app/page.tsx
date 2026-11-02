@@ -71,7 +71,7 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
     window.addEventListener("resize", handleResize);
 
     // Nodes constellation
-    const nodeCount = Math.min(60, Math.floor((width * height) / 20000));
+    const nodeCount = Math.min(55, Math.floor((width * height) / 22000));
     const nodes: Array<{
       x: number;
       y: number;
@@ -91,8 +91,8 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
       nodes.push({
         x: Math.random() * width,
         y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.6,
-        vy: (Math.random() - 0.5) * 0.6,
+        vx: (Math.random() - 0.5) * 0.55,
+        vy: (Math.random() - 0.5) * 0.55,
         radius: Math.random() * 2 + 1,
         color: activeColors[Math.floor(Math.random() * activeColors.length)],
       });
@@ -117,13 +117,13 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
       speed: number;
       opacity: number;
     }> = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 10; i++) {
       floatingTokens.push({
         x: Math.random() * width,
         y: Math.random() * height,
         text: tokens[Math.floor(Math.random() * tokens.length)],
-        speed: Math.random() * 0.5 + 0.25,
-        opacity: Math.random() * 0.35 + 0.1,
+        speed: Math.random() * 0.45 + 0.2,
+        opacity: Math.random() * 0.35 + 0.15,
       });
     }
 
@@ -135,7 +135,7 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
       floatingTokens.forEach((token) => {
         const tokenColor =
           theme === "light"
-            ? `rgba(2, 132, 199, ${token.opacity * 0.75})`
+            ? `rgba(2, 132, 199, ${token.opacity * 0.8})`
             : theme === "blue"
             ? `rgba(96, 165, 250, ${token.opacity})`
             : `rgba(0, 240, 255, ${token.opacity})`;
@@ -162,7 +162,7 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         ctx.fillStyle = node.color;
         ctx.shadowColor = node.color;
-        ctx.shadowBlur = theme === "light" ? 3 : 6;
+        ctx.shadowBlur = theme === "light" ? 2 : 5;
         ctx.fill();
         ctx.shadowBlur = 0;
 
@@ -177,7 +177,7 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
             ctx.beginPath();
             ctx.moveTo(node.x, node.y);
             ctx.lineTo(other.x, other.y);
-            const alpha = (1 - dist / 130) * (theme === "light" ? 0.18 : 0.22);
+            const alpha = (1 - dist / 130) * (theme === "light" ? 0.2 : 0.22);
             const strokeColor =
               theme === "light"
                 ? `rgba(2, 132, 199, ${alpha})`
@@ -209,6 +209,7 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
 export default function LicensePortalDashboard() {
   // ── Theme State ───────────────────────────────────────────────────────────
   const [theme, setTheme] = useState<ThemeMode>("dark");
+  const isLight = theme === "light";
 
   // ── Authentication State ──────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -496,7 +497,10 @@ export default function LicensePortalDashboard() {
 
   // Reusable Theme Toggler Component
   const ThemeToggler = () => (
-    <div className="flex items-center p-1 rounded-xl bg-slate-950/40 border border-slate-700/60 shadow-inner">
+    <div
+      className="flex items-center p-1 rounded-xl border shadow-inner transition-colors"
+      style={{ backgroundColor: "var(--toggler-bg)", borderColor: "var(--toggler-border)" }}
+    >
       <button
         type="button"
         onClick={() => handleSetTheme("dark")}
@@ -504,6 +508,8 @@ export default function LicensePortalDashboard() {
         className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
           theme === "dark"
             ? "bg-slate-900 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.4)] border border-cyan-500/50"
+            : isLight
+            ? "text-slate-600 hover:text-slate-900"
             : "text-slate-400 hover:text-slate-200"
         }`}
       >
@@ -518,6 +524,8 @@ export default function LicensePortalDashboard() {
         className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
           theme === "blue"
             ? "bg-blue-900 text-blue-200 shadow-[0_0_14px_rgba(59,130,246,0.5)] border border-blue-400/60"
+            : isLight
+            ? "text-slate-600 hover:text-slate-900"
             : "text-slate-400 hover:text-slate-200"
         }`}
       >
@@ -531,7 +539,7 @@ export default function LicensePortalDashboard() {
         title="Clean Tech Light Mode"
         className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
           theme === "light"
-            ? "bg-white text-sky-700 shadow-md border border-sky-400 font-extrabold"
+            ? "bg-white text-sky-800 shadow-md border border-sky-400 font-extrabold"
             : "text-slate-400 hover:text-slate-200"
         }`}
       >
@@ -550,7 +558,7 @@ export default function LicensePortalDashboard() {
         className={`min-h-screen theme-${theme} flex items-center justify-center`}
         style={{ backgroundColor: "var(--bg-primary)" }}
       >
-        <div className="w-10 h-10 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin"></div>
+        <div className="w-10 h-10 rounded-full border-2 border-cyan-500 border-t-transparent animate-spin"></div>
       </div>
     );
   }
@@ -566,26 +574,47 @@ export default function LicensePortalDashboard() {
 
         {/* Animated Cyber Scanning Laser Line */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-          <div className="w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent animate-scanline opacity-75"></div>
+          <div
+            className={`w-full h-1 animate-scanline opacity-75 ${
+              isLight
+                ? "bg-gradient-to-r from-transparent via-sky-500/40 to-transparent"
+                : "bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent"
+            }`}
+          ></div>
         </div>
 
         {/* Theme Switcher Top-Right on Login Screen */}
-        <div className="absolute top-6 right-6 z-20">
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
           <ThemeToggler />
         </div>
 
         {/* Ambient Glowing Glass Orbs */}
-        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
-        <div className="absolute bottom-1/4 right-1/4 w-[550px] h-[550px] bg-blue-600/15 rounded-full blur-[160px] pointer-events-none translate-x-1/2 translate-y-1/2" />
-        <div className="absolute top-1/2 left-1/2 w-80 h-80 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute top-1/4 left-1/4 w-[450px] h-[450px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-blue-600/15 rounded-full blur-[160px] pointer-events-none translate-x-1/2 translate-y-1/2" />
 
         {/* Master Admin Glassmorphism Card */}
-        <div className="w-full max-w-md relative z-10 glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl backdrop-blur-3xl">
+        <div className="w-full max-w-md relative z-10 glass-panel rounded-3xl p-7 sm:p-10 shadow-2xl backdrop-blur-3xl">
           {/* Cyber HUD Corner Brackets */}
-          <div className="absolute top-3 left-3 w-3.5 h-3.5 border-t-2 border-l-2 border-cyan-400"></div>
-          <div className="absolute top-3 right-3 w-3.5 h-3.5 border-t-2 border-r-2 border-cyan-400"></div>
-          <div className="absolute bottom-3 left-3 w-3.5 h-3.5 border-b-2 border-l-2 border-cyan-400"></div>
-          <div className="absolute bottom-3 right-3 w-3.5 h-3.5 border-b-2 border-r-2 border-cyan-400"></div>
+          <div
+            className={`absolute top-3 left-3 w-3.5 h-3.5 border-t-2 border-l-2 ${
+              isLight ? "border-sky-500" : "border-cyan-400"
+            }`}
+          ></div>
+          <div
+            className={`absolute top-3 right-3 w-3.5 h-3.5 border-t-2 border-r-2 ${
+              isLight ? "border-sky-500" : "border-cyan-400"
+            }`}
+          ></div>
+          <div
+            className={`absolute bottom-3 left-3 w-3.5 h-3.5 border-b-2 border-l-2 ${
+              isLight ? "border-sky-500" : "border-cyan-400"
+            }`}
+          ></div>
+          <div
+            className={`absolute bottom-3 right-3 w-3.5 h-3.5 border-b-2 border-r-2 ${
+              isLight ? "border-sky-500" : "border-cyan-400"
+            }`}
+          ></div>
 
           {/* If Currently Running Cyber Authentication Sequence */}
           {isAuthenticating ? (
@@ -600,25 +629,34 @@ export default function LicensePortalDashboard() {
               </div>
 
               <div>
-                <h2 className="text-xl font-black text-cyan-400 tracking-widest uppercase">
+                <h2
+                  className={`text-xl font-black tracking-widest uppercase ${
+                    isLight ? "text-sky-800" : "text-cyan-400"
+                  }`}
+                >
                   ACCESS GRANTED
                 </h2>
-                <p className="text-[11px] font-mono text-emerald-500 mt-1 tracking-wider font-bold">
+                <p className="text-[11px] font-mono text-emerald-600 mt-1 tracking-wider font-bold">
                   MASTER SECURITY CLEARANCE: LEVEL 5
                 </p>
               </div>
 
               {/* Glowing Cyber Progress Bar */}
               <div className="w-full space-y-2">
-                <div className="w-full bg-slate-950/90 rounded-full h-3 overflow-hidden border border-cyan-500/50 p-0.5">
+                <div
+                  className="w-full rounded-full h-3 overflow-hidden border p-0.5"
+                  style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
+                >
                   <div
-                    className="bg-gradient-to-r from-cyan-400 via-emerald-400 to-sky-300 h-full rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(56,189,248,0.9)]"
+                    className="bg-gradient-to-r from-cyan-500 via-emerald-400 to-sky-400 h-full rounded-full transition-all duration-300 shadow-md"
                     style={{ width: `${authProgress}%` }}
                   ></div>
                 </div>
                 <div className="flex justify-between text-[11px] font-mono" style={{ color: "var(--text-secondary)" }}>
-                  <span className="text-cyan-400 font-bold">{authStepText}</span>
-                  <span className="font-extrabold text-emerald-400">{authProgress}%</span>
+                  <span className={isLight ? "text-sky-700 font-bold" : "text-cyan-400 font-bold"}>
+                    {authStepText}
+                  </span>
+                  <span className="font-extrabold text-emerald-600">{authProgress}%</span>
                 </div>
               </div>
 
@@ -627,16 +665,16 @@ export default function LicensePortalDashboard() {
                 className="p-3.5 rounded-xl border text-[10px] font-mono text-left w-full space-y-1.5 shadow-inner"
                 style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
               >
-                <div className="text-emerald-500 flex items-center space-x-1.5 font-bold">
-                  <span className="text-cyan-400">&gt;</span>
+                <div className="text-emerald-600 flex items-center space-x-1.5 font-bold">
+                  <span className={isLight ? "text-sky-600" : "text-cyan-400"}>&gt;</span>
                   <span>RSA-256 JWT Signed: OK (aegis-license-system)</span>
                 </div>
-                <div className="text-cyan-400 flex items-center space-x-1.5">
-                  <span className="text-cyan-400">&gt;</span>
+                <div className={isLight ? "text-sky-700 flex items-center space-x-1.5 font-semibold" : "text-cyan-400 flex items-center space-x-1.5"}>
+                  <span className={isLight ? "text-sky-600" : "text-cyan-400"}>&gt;</span>
                   <span>Hardware Fingerprint Signature: VERIFIED</span>
                 </div>
                 <div className="flex items-center space-x-1.5 animate-pulse" style={{ color: "var(--text-tertiary)" }}>
-                  <span className="text-cyan-400">&gt;</span>
+                  <span className={isLight ? "text-sky-600" : "text-cyan-400"}>&gt;</span>
                   <span>Launching SOC Command Cockpit...</span>
                 </div>
               </div>
@@ -644,11 +682,11 @@ export default function LicensePortalDashboard() {
           ) : (
             <>
               {/* Top Badge & Glow Icon */}
-              <div className="flex flex-col items-center text-center mb-7">
-                <div className="relative mb-4">
-                  <div className="absolute inset-0 bg-cyan-400/40 rounded-2xl blur-xl animate-pulse"></div>
-                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/30 to-blue-900/40 border border-cyan-400/70 flex items-center justify-center shadow-xl shadow-cyan-500/30">
-                    <Shield className="w-8 h-8 text-cyan-300" />
+              <div className="flex flex-col items-center text-center mb-6">
+                <div className="relative mb-3.5">
+                  <div className="absolute inset-0 bg-cyan-400/30 rounded-2xl blur-xl animate-pulse"></div>
+                  <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/30 to-blue-900/40 border border-cyan-400/70 flex items-center justify-center shadow-xl shadow-cyan-500/20">
+                    <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-400" />
                   </div>
                 </div>
 
@@ -656,19 +694,29 @@ export default function LicensePortalDashboard() {
                   <h1 className="text-2xl font-black tracking-wider" style={{ color: "var(--text-primary)" }}>
                     AEGIS IDPS
                   </h1>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-400 border border-cyan-700/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      isLight
+                        ? "bg-sky-100 text-sky-800 border border-sky-300"
+                        : "bg-cyan-950 text-cyan-400 border border-cyan-700/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                    }`}
+                  >
                     SOC v2.4
                   </span>
                 </div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-cyan-500 mt-1">
+                <p
+                  className={`text-xs font-bold uppercase tracking-wider mt-1 ${
+                    isLight ? "text-sky-700" : "text-cyan-400"
+                  }`}
+                >
                   Cloud License Operations Portal
                 </p>
                 <div
-                  className="mt-3 inline-flex items-center space-x-2 px-3.5 py-1 rounded-full border text-[11px] font-mono"
+                  className="mt-3 inline-flex items-center space-x-2 px-3 py-1 rounded-full border text-[11px] font-mono"
                   style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-secondary)" }}
                 >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span>RESTRICTED MASTER CONSOLE</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-semibold">RESTRICTED MASTER CONSOLE</span>
                 </div>
               </div>
 
@@ -679,7 +727,7 @@ export default function LicensePortalDashboard() {
                     Administrator ID
                   </label>
                   <div className="relative">
-                    <Users className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                    <Users className={`w-4 h-4 absolute left-3.5 top-3 ${isLight ? "text-sky-600" : "text-cyan-400"}`} />
                     <input
                       type="text"
                       required
@@ -687,7 +735,7 @@ export default function LicensePortalDashboard() {
                       value={loginUsername}
                       onChange={(e: any) => setLoginUsername(e.target.value)}
                       style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                      className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-4 py-2.5 text-sm placeholder-slate-500 outline-none transition"
+                      className="w-full border focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-4 py-2.5 text-sm placeholder:text-slate-400 outline-none transition"
                     />
                   </div>
                 </div>
@@ -698,7 +746,7 @@ export default function LicensePortalDashboard() {
                     Master Cryptographic Passcode
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                    <Lock className={`w-4 h-4 absolute left-3.5 top-3 ${isLight ? "text-sky-600" : "text-cyan-400"}`} />
                     <input
                       type={showPassword ? "text" : "password"}
                       required
@@ -706,12 +754,12 @@ export default function LicensePortalDashboard() {
                       value={loginPassword}
                       onChange={(e: any) => setLoginPassword(e.target.value)}
                       style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                      className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-11 py-2.5 text-sm placeholder-slate-500 outline-none transition font-mono"
+                      className="w-full border focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-11 py-2.5 text-sm placeholder:text-slate-400 outline-none transition font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
+                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition cursor-pointer"
                       title={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -720,15 +768,21 @@ export default function LicensePortalDashboard() {
                 </div>
 
                 {loginError && (
-                  <div className="p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-300 text-xs flex items-center space-x-2 animate-in fade-in">
-                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                  <div
+                    className={`p-3 rounded-xl border text-xs flex items-center space-x-2 animate-in fade-in ${
+                      isLight
+                        ? "bg-red-50 border-red-300 text-red-800 font-semibold"
+                        : "bg-red-950/80 border-red-500/50 text-red-300"
+                    }`}
+                  >
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
                     <span>{loginError}</span>
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-slate-950 font-black text-sm tracking-wider uppercase shadow-lg shadow-cyan-500/25 hover:shadow-cyan-400/40 transition-all duration-200 flex items-center justify-center space-x-2 mt-6 cursor-pointer"
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-sm tracking-wider uppercase shadow-lg shadow-cyan-500/25 hover:shadow-cyan-400/40 transition-all duration-200 flex items-center justify-center space-x-2 mt-6 cursor-pointer"
                 >
                   <Key className="w-4 h-4" />
                   <span>Authenticate Operator</span>
@@ -736,14 +790,18 @@ export default function LicensePortalDashboard() {
               </form>
 
               {/* Demo Credentials Quick-Fill helper */}
-              <div className="mt-6 pt-5 border-t border-slate-700/50 text-center">
+              <div className="mt-6 pt-4 border-t border-slate-300 dark:border-slate-700/60 text-center">
                 <button
                   type="button"
                   onClick={() => {
                     setLoginUsername("admin");
                     setLoginPassword("aegis@2026");
                   }}
-                  className="text-[11px] text-cyan-500 hover:text-cyan-400 underline underline-offset-4 transition font-mono font-bold"
+                  className={`text-[11px] underline underline-offset-4 transition font-mono font-bold ${
+                    isLight
+                      ? "text-sky-700 hover:text-sky-900"
+                      : "text-cyan-400 hover:text-cyan-300"
+                  }`}
                 >
                   [⚡ Click to Pre-fill Master Credentials: admin / aegis@2026]
                 </button>
@@ -760,7 +818,7 @@ export default function LicensePortalDashboard() {
   // ──────────────────────────────────────────────────────────────────────────
   return (
     <div
-      className={`min-h-screen theme-${theme} cyber-grid p-4 sm:p-6 md:p-8 relative overflow-hidden transition-colors duration-300 selection:bg-cyan-500 selection:text-black`}
+      className={`min-h-screen theme-${theme} cyber-grid p-3.5 sm:p-6 md:p-8 relative overflow-hidden transition-colors duration-300 selection:bg-cyan-500 selection:text-black`}
       style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)" }}
     >
       {/* Background Interactive Cyber Particles Canvas */}
@@ -768,12 +826,18 @@ export default function LicensePortalDashboard() {
 
       {/* Floating Interactive Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 animate-in slide-in-from-top-4 fade-in duration-300">
-          <div className="glass-panel px-4 py-3 rounded-2xl flex items-center space-x-3 shadow-2xl border border-cyan-400/40">
-            {toastMessage.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
-            {toastMessage.type === "info" && <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />}
-            {toastMessage.type === "warn" && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />}
-            <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{toastMessage.text}</span>
+        <div className="fixed top-5 right-5 z-50 animate-in slide-in-from-top-4 fade-in duration-300">
+          <div
+            className={`glass-panel px-4 py-3 rounded-2xl flex items-center space-x-3 shadow-2xl border ${
+              isLight ? "border-sky-300" : "border-cyan-400/40"
+            }`}
+          >
+            {toastMessage.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />}
+            {toastMessage.type === "info" && <Sparkles className="w-5 h-5 text-cyan-500 shrink-0" />}
+            {toastMessage.type === "warn" && <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />}
+            <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+              {toastMessage.text}
+            </span>
           </div>
         </div>
       )}
@@ -783,46 +847,56 @@ export default function LicensePortalDashboard() {
       <div className="absolute top-1/3 right-0 w-[550px] h-[550px] bg-blue-600/10 rounded-full blur-[170px] pointer-events-none translate-x-1/3" />
       <div className="absolute bottom-0 left-1/3 w-[650px] h-[450px] bg-indigo-600/10 rounded-full blur-[150px] pointer-events-none translate-y-1/3" />
 
-      <div className="max-w-7xl mx-auto space-y-8 relative z-10">
+      <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8 relative z-10">
         {/* ── Top Cyber HUD Bar ───────────────────────────────────────────────── */}
         <header className="glass-panel rounded-2xl p-4 sm:px-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center space-x-3.5">
             <div className="relative">
               <div className="absolute inset-0 bg-cyan-400/25 rounded-xl blur-md animate-pulse"></div>
-              <div className="relative w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/30 to-blue-900/40 border border-cyan-400/40 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
-                <Shield className="w-6 h-6 text-cyan-400" />
+              <div className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/30 to-blue-900/40 border border-cyan-400/40 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
+                <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
               </div>
             </div>
 
             <div>
-              <div className="flex items-center space-x-2.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-lg md:text-xl font-black tracking-wider" style={{ color: "var(--text-primary)" }}>
                   AEGIS IDPS
                 </h1>
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-cyan-950 text-cyan-300 border border-cyan-700/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+                <span
+                  className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md ${
+                    isLight
+                      ? "bg-sky-100 text-sky-800 border border-sky-300"
+                      : "bg-cyan-950 text-cyan-300 border border-cyan-700/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                  }`}
+                >
                   CLOUD LICENSE COMMAND
                 </span>
               </div>
               <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                Hardware ID Binding, Node Cryptographic Key Issuance &amp; Real-time Firebase Firestore Sync
+                Hardware ID Binding, Node Cryptographic Key Issuance &amp; Real-time Firebase Sync
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
             {/* Live Cloud Status */}
             <div
-              className="flex items-center space-x-2 text-xs font-mono border px-3.5 py-1.5 rounded-xl"
+              className="flex items-center space-x-2 text-xs font-mono border px-3 py-1.5 rounded-xl"
               style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="text-emerald-500 font-bold">FIREBASE: LIVE</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">FIREBASE: LIVE</span>
             </div>
 
             {/* Live Clock Pill */}
             <div
-              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono text-cyan-500 font-bold"
-              style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
+              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono font-bold"
+              style={{
+                backgroundColor: "var(--input-bg)",
+                borderColor: "var(--input-border)",
+                color: isLight ? "#0369a1" : "#22d3ee",
+              }}
             >
               <Clock className="w-3.5 h-3.5" style={{ color: "var(--text-tertiary)" }} />
               <span>{utcClock}</span>
@@ -835,24 +909,34 @@ export default function LicensePortalDashboard() {
             <button
               onClick={handleManualRefresh}
               disabled={refreshing}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer"
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer hover:border-cyan-400"
               style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
               title="Refresh Licenses"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-cyan-400" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-cyan-500" : ""}`} />
               <span>Sync</span>
             </button>
 
             {/* Master Admin Operator Pill */}
-            <div className="hidden sm:flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-cyan-950/40 border border-cyan-700/50 text-xs text-cyan-400 font-bold">
-              <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <div
+              className={`hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-bold ${
+                isLight
+                  ? "bg-sky-50 border border-sky-300 text-sky-800"
+                  : "bg-cyan-950/40 border border-cyan-700/50 text-cyan-400"
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
               <span>Master Admin</span>
             </div>
 
             {/* Logout Button */}
             <button
               onClick={handleLogout}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/50 border border-red-800/50 text-xs text-red-400 font-bold transition cursor-pointer"
+              className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                isLight
+                  ? "bg-red-50 hover:bg-red-100 border border-red-300 text-red-700 shadow-sm"
+                  : "bg-red-950/40 hover:bg-red-900/50 border border-red-800/50 text-red-400"
+              }`}
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -862,63 +946,107 @@ export default function LicensePortalDashboard() {
         </header>
 
         {/* ── 4 Cyber Metric HUD Cards ───────────────────────────────────────── */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
           {/* Card 1: Total Issued */}
-          <div className="glass-panel p-5 rounded-2xl group hover:border-cyan-400/80 hover:shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all">
-            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
-              <span className="text-xs font-bold uppercase tracking-wider text-cyan-500">Total Issued</span>
-              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Key className="w-4 h-4 text-cyan-500" />
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl group hover:border-cyan-400/80 transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? "text-sky-800" : "text-cyan-400"}`}>
+                Total Issued
+              </span>
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform ${
+                  isLight ? "bg-sky-50 border border-sky-200 text-sky-700" : "bg-cyan-500/10 border border-cyan-400/30 text-cyan-400"
+                }`}
+              >
+                <Key className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight" style={{ color: "var(--text-primary)" }}>{stats.total}</div>
-            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Cryptographic Node Keys</p>
+            <div className="text-2xl sm:text-3xl font-black tracking-tight" style={{ color: "var(--text-primary)" }}>
+              {stats.total}
+            </div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>
+              Cryptographic Node Keys
+            </p>
           </div>
 
           {/* Card 2: Active Deployments */}
-          <div className="glass-panel p-5 rounded-2xl group hover:border-emerald-400/80 hover:shadow-[0_0_25px_rgba(16,185,129,0.2)] transition-all">
-            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">Active Nodes</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl group hover:border-emerald-400/80 transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? "text-emerald-800" : "text-emerald-400"}`}>
+                Active Nodes
+              </span>
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform ${
+                  isLight ? "bg-emerald-50 border border-emerald-200 text-emerald-700" : "bg-emerald-500/10 border border-emerald-400/30 text-emerald-400"
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-emerald-500">{stats.active}</div>
-            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Operational SOC Stations</p>
+            <div className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? "text-emerald-700" : "text-emerald-400"}`}>
+              {stats.active}
+            </div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>
+              Operational SOC Stations
+            </p>
           </div>
 
           {/* Card 3: Expiring Soon */}
-          <div className="glass-panel p-5 rounded-2xl group hover:border-amber-400/80 hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] transition-all">
-            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-500">Expiring Soon</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Clock className="w-4 h-4 text-amber-500" />
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl group hover:border-amber-400/80 transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? "text-amber-800" : "text-amber-400"}`}>
+                Expiring Soon
+              </span>
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform ${
+                  isLight ? "bg-amber-50 border border-amber-200 text-amber-700" : "bg-amber-500/10 border border-amber-400/30 text-amber-400"
+                }`}
+              >
+                <Clock className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-amber-500">{stats.expiringSoon}</div>
-            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>&lt; 7 Days Remaining</p>
+            <div className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? "text-amber-700" : "text-amber-400"}`}>
+              {stats.expiringSoon}
+            </div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>
+              &lt; 7 Days Remaining
+            </p>
           </div>
 
           {/* Card 4: Bound HWID Machines */}
-          <div className="glass-panel p-5 rounded-2xl group hover:border-indigo-400/80 hover:shadow-[0_0_25px_rgba(99,102,241,0.2)] transition-all">
-            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-500">Bound Workstations</span>
-              <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Laptop className="w-4 h-4 text-indigo-500" />
+          <div className="glass-panel p-4 sm:p-5 rounded-2xl group hover:border-indigo-400/80 transition-all">
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-xs font-bold uppercase tracking-wider ${isLight ? "text-indigo-800" : "text-indigo-400"}`}>
+                Bound Workstations
+              </span>
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform ${
+                  isLight ? "bg-indigo-50 border border-indigo-200 text-indigo-700" : "bg-indigo-500/10 border border-indigo-400/30 text-indigo-400"
+                }`}
+              >
+                <Laptop className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-indigo-500">{stats.connectedDevices}</div>
-            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Locked Machine HWIDs</p>
+            <div className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? "text-indigo-700" : "text-indigo-400"}`}>
+              {stats.connectedDevices}
+            </div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>
+              Locked Machine HWIDs
+            </p>
           </div>
         </section>
 
         {/* ── Key Issuance Panel (Glassmorphism Form) ────────────────────────── */}
-        <section className="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-
+        <section className="glass-panel rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
           <div className="flex items-center space-x-3 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-              <Key className="w-5 h-5 text-cyan-500" />
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                isLight
+                  ? "bg-sky-100 border border-sky-300 text-sky-700"
+                  : "bg-cyan-500/15 border border-cyan-400/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+              }`}
+            >
+              <Key className="w-5 h-5" />
             </div>
             <h2 className="text-base sm:text-lg font-black tracking-wide uppercase" style={{ color: "var(--text-primary)" }}>
               ISSUE NEW CLIENT NODE LICENSE
@@ -929,14 +1057,14 @@ export default function LicensePortalDashboard() {
           </p>
 
           <form onSubmit={handleCreateLicense} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
               {/* Field 1: Client Name */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                   Client Full Name <span className="text-cyan-500">*</span>
                 </label>
                 <div className="relative">
-                  <Users className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
+                  <Users className={`w-4 h-4 absolute left-3.5 top-3 ${isLight ? "text-sky-600" : "text-cyan-400"}`} />
                   <input
                     type="text"
                     required
@@ -944,7 +1072,7 @@ export default function LicensePortalDashboard() {
                     value={clientName}
                     onChange={(e: any) => setClientName(e.target.value)}
                     style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
+                    className="w-full border focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder:text-slate-400 outline-none transition"
                   />
                 </div>
               </div>
@@ -955,14 +1083,14 @@ export default function LicensePortalDashboard() {
                   Organization / Lab / Institution
                 </label>
                 <div className="relative">
-                  <Building className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
+                  <Building className={`w-4 h-4 absolute left-3.5 top-3 ${isLight ? "text-sky-600" : "text-cyan-400"}`} />
                   <input
                     type="text"
                     placeholder="e.g. Aegis Cyber Defense Lab"
                     value={organization}
                     onChange={(e: any) => setOrganization(e.target.value)}
                     style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
+                    className="w-full border focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder:text-slate-400 outline-none transition"
                   />
                 </div>
               </div>
@@ -973,14 +1101,14 @@ export default function LicensePortalDashboard() {
                   Contact Email / Phone
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
+                  <Mail className={`w-4 h-4 absolute left-3.5 top-3 ${isLight ? "text-sky-600" : "text-cyan-400"}`} />
                   <input
                     type="text"
                     placeholder="e.g. operator@domain.com"
                     value={contactEmail}
                     onChange={(e: any) => setContactEmail(e.target.value)}
                     style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
+                    className="w-full border focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder:text-slate-400 outline-none transition"
                   />
                 </div>
               </div>
@@ -991,45 +1119,51 @@ export default function LicensePortalDashboard() {
               <label className="block text-xs font-bold uppercase tracking-wider mb-2.5" style={{ color: "var(--text-secondary)" }}>
                 License Validity Duration
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
                 {[
                   { id: "7_days", label: "7 Days", desc: "Pilot Trial" },
                   { id: "30_days", label: "30 Days", desc: "Monthly Standard" },
                   { id: "90_days", label: "90 Days", desc: "Quarterly Evaluation" },
                   { id: "1_year", label: "1 Year", desc: "Annual Enterprise" },
                   { id: "lifetime", label: "Lifetime", desc: "Perpetual License" },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setPlan(item.id as LicensePlan)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                      plan === item.id
-                        ? "bg-cyan-500/15 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] text-cyan-400"
-                        : "border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-slate-200"
-                    }`}
-                    style={plan !== item.id ? { backgroundColor: "var(--input-bg)" } : undefined}
-                  >
-                    <div className="text-xs font-black">{item.label}</div>
-                    <div className="text-[10px] opacity-75">{item.desc}</div>
-                  </button>
-                ))}
+                ].map((item) => {
+                  const isSelected = plan === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setPlan(item.id as LicensePlan)}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        isSelected
+                          ? isLight
+                            ? "bg-sky-50 border-sky-500 text-sky-950 font-black ring-2 ring-sky-300 shadow-sm"
+                            : "bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)] font-bold"
+                          : isLight
+                          ? "border-slate-300 text-slate-700 hover:border-sky-400 hover:text-sky-900 bg-white"
+                          : "border-slate-700/60 text-slate-400 hover:border-slate-500 hover:text-slate-200 bg-slate-900/60"
+                      }`}
+                    >
+                      <div className="text-xs font-black">{item.label}</div>
+                      <div className="text-[10px] opacity-75">{item.desc}</div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
               {/* Field 5: Max Allowed Devices */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                   Allowed Machines (Hardware Lock)
                 </label>
                 <div className="relative">
-                  <Laptop className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
+                  <Laptop className={`w-4 h-4 absolute left-3.5 top-3 ${isLight ? "text-sky-600" : "text-cyan-400"}`} />
                   <select
                     value={maxDevices}
                     onChange={(e: any) => setMaxDevices(parseInt(e.target.value, 10))}
                     style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm outline-none transition cursor-pointer"
+                    className="w-full border focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm outline-none transition cursor-pointer"
                   >
                     <option value={1}>1 Machine (Single Workstation Lock)</option>
                     <option value={3}>3 Machines (Small Lab Cluster)</option>
@@ -1044,14 +1178,14 @@ export default function LicensePortalDashboard() {
                   Operational Reference Notes
                 </label>
                 <div className="relative">
-                  <FileText className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
+                  <FileText className={`w-4 h-4 absolute left-3.5 top-3 ${isLight ? "text-sky-600" : "text-cyan-400"}`} />
                   <input
                     type="text"
                     placeholder="e.g. FYP External Evaluator / Node #01"
                     value={notes}
                     onChange={(e: any) => setNotes(e.target.value)}
                     style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
+                    className="w-full border focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder:text-slate-400 outline-none transition"
                   />
                 </div>
               </div>
@@ -1062,41 +1196,58 @@ export default function LicensePortalDashboard() {
               <button
                 type="submit"
                 disabled={generating || !clientName.trim()}
-                className="flex items-center justify-center space-x-2 px-8 py-3.5 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 hover:from-cyan-300 hover:to-blue-500 disabled:opacity-50 text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-cyan-500/25 hover:shadow-cyan-400/40 transition cursor-pointer"
+                className="flex items-center justify-center space-x-2 px-8 py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-50 text-white font-black text-sm tracking-wide shadow-lg shadow-cyan-500/25 hover:shadow-cyan-400/40 transition cursor-pointer"
               >
                 <Key className="w-4 h-4" />
                 <span>{generating ? "Encrypting & Registering on Cloud..." : "⚡ Auto-Generate & Issue License Key"}</span>
               </button>
 
               <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
-                Auto-syncs to Firebase Firestore: <span className="text-cyan-500 font-bold">aegis-license-system</span>
+                Auto-syncs to Firebase Firestore:{" "}
+                <strong className={isLight ? "text-sky-700" : "text-cyan-400"}>aegis-license-system</strong>
               </span>
             </div>
           </form>
 
           {/* ── Generated Key Result Banner (Holographic Callout) ───────────── */}
           {recentlyGenerated && (
-            <div className="mt-8 p-6 rounded-2xl bg-cyan-500/15 border-2 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.35)] animate-in fade-in slide-in-from-top-3 duration-300 relative">
+            <div
+              className={`mt-8 p-5 sm:p-6 rounded-2xl border-2 animate-in fade-in slide-in-from-top-3 duration-300 relative ${
+                isLight
+                  ? "bg-sky-50 border-sky-400 shadow-xl"
+                  : "bg-cyan-500/15 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.35)]"
+              }`}
+            >
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <div className="flex items-center space-x-2 mb-1.5">
                     <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                    <span className="text-xs font-black text-cyan-500 uppercase tracking-widest">
+                    <span
+                      className={`text-xs font-black uppercase tracking-widest ${
+                        isLight ? "text-sky-900" : "text-cyan-400"
+                      }`}
+                    >
                       Node License Successfully Registered &amp; Encrypted
                     </span>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-mono font-black text-cyan-400 tracking-widest text-shadow">
+                  <div
+                    className={`text-2xl sm:text-3xl font-mono font-black tracking-widest break-all ${
+                      isLight ? "text-sky-900" : "text-cyan-300"
+                    }`}
+                  >
                     {recentlyGenerated.key}
                   </div>
                   <div className="text-xs mt-1.5" style={{ color: "var(--text-secondary)" }}>
-                    Assigned: <strong style={{ color: "var(--text-primary)" }}>{recentlyGenerated.clientName}</strong> ({recentlyGenerated.organization || "Direct Client"}) · Valid until: {new Date(recentlyGenerated.expiresAt).toLocaleDateString()}
+                    Assigned: <strong style={{ color: "var(--text-primary)" }}>{recentlyGenerated.clientName}</strong> (
+                    {recentlyGenerated.organization || "Direct Client"}) · Valid until:{" "}
+                    {new Date(recentlyGenerated.expiresAt).toLocaleDateString()}
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
                   <button
                     onClick={() => copyToClipboard(recentlyGenerated.key, "key")}
-                    className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs transition shadow-md shadow-cyan-400/30 cursor-pointer"
+                    className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 hover:from-cyan-400 hover:to-sky-500 text-white font-black text-xs transition shadow-md cursor-pointer"
                   >
                     {copiedKey ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedKey ? "Copied!" : "Copy Key"}</span>
@@ -1107,10 +1258,10 @@ export default function LicensePortalDashboard() {
                       const text = `AEGIS IDPS ACTIVATION CREDENTIALS:\nClient: ${recentlyGenerated.clientName}\nLicense Key: ${recentlyGenerated.key}\nExpiry Date: ${new Date(recentlyGenerated.expiresAt).toLocaleDateString()}\n\nInstructions: Launch Aegis IDPS on your PC, paste this 16-character key into the unified login card, and click 'AUTHORIZE & ENTER CONSOLE'.`;
                       copyToClipboard(text, "summary");
                     }}
-                    className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer"
+                    className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl border text-xs font-bold transition cursor-pointer hover:border-cyan-500"
                     style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
                   >
-                    {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedSummary ? "Copied Message!" : "Copy Instructions"}</span>
                   </button>
                 </div>
@@ -1120,12 +1271,14 @@ export default function LicensePortalDashboard() {
         </section>
 
         {/* ── Active Licenses Management Table (Glassmorphism) ───────────────── */}
-        <section className="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl">
+        <section className="glass-panel rounded-3xl p-5 sm:p-8 shadow-2xl">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-wide uppercase flex items-center space-x-2" style={{ color: "var(--text-primary)" }}>
                 <span>DEPLOYED CLIENT NODES</span>
-                <span className="text-xs font-normal text-cyan-500 font-mono">({filteredLicenses.length} matching)</span>
+                <span className={`text-xs font-bold font-mono ${isLight ? "text-sky-700" : "text-cyan-400"}`}>
+                  ({filteredLicenses.length} matching)
+                </span>
               </h2>
               <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                 Live monitoring of issued licenses, bound hardware fingerprints, and instantaneous access control.
@@ -1142,7 +1295,7 @@ export default function LicensePortalDashboard() {
                   value={searchQuery}
                   onChange={(e: any) => setSearchQuery(e.target.value)}
                   style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
-                  className="border focus:border-cyan-400 rounded-xl pl-8 pr-3 py-1.5 text-xs placeholder-slate-500 outline-none w-56 transition"
+                  className="border focus:border-cyan-500 rounded-xl pl-8 pr-3 py-1.5 text-xs placeholder:text-slate-400 outline-none w-56 transition"
                 />
               </div>
 
@@ -1150,41 +1303,46 @@ export default function LicensePortalDashboard() {
                 className="flex rounded-xl p-1 border text-xs"
                 style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
               >
-                {(["all", "active", "expiring", "revoked"] as const).map((filter) => (
-                  <button
-                    key={filter}
-                    onClick={() => setStatusFilter(filter)}
-                    className={`px-3 py-1 rounded-lg font-bold capitalize transition cursor-pointer ${
-                      statusFilter === filter
-                        ? "bg-cyan-500 text-slate-950 shadow-[0_0_10px_rgba(6,182,212,0.4)]"
-                        : "text-slate-400 hover:text-slate-200"
-                    }`}
-                  >
-                    {filter}
-                  </button>
-                ))}
+                {(["all", "active", "expiring", "revoked"] as const).map((filter) => {
+                  const isSelected = statusFilter === filter;
+                  return (
+                    <button
+                      key={filter}
+                      onClick={() => setStatusFilter(filter)}
+                      className={`px-3 py-1 rounded-lg font-bold capitalize transition cursor-pointer ${
+                        isSelected
+                          ? "bg-cyan-500 text-slate-950 shadow-md font-black"
+                          : isLight
+                          ? "text-slate-600 hover:text-sky-800 hover:bg-slate-100"
+                          : "text-slate-400 hover:text-cyan-300 hover:bg-slate-800/40"
+                      }`}
+                    >
+                      {filter}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          {/* Table Container */}
+          {/* Table Container with Horizontal Scroll for Small Screens */}
           <div
             className="overflow-x-auto rounded-2xl border"
             style={{ backgroundColor: "var(--table-bg)", borderColor: "var(--panel-border)" }}
           >
-            <table className="w-full text-left text-xs" style={{ color: "var(--text-primary)" }}>
+            <table className="w-full min-w-[850px] text-left text-xs" style={{ color: "var(--text-primary)" }}>
               <thead
                 className="uppercase text-[11px] font-black tracking-wider border-b"
                 style={{ backgroundColor: "var(--table-header)", borderColor: "var(--table-divide)" }}
               >
                 <tr>
-                  <th className="py-3.5 px-4 text-cyan-500">Client &amp; Organization</th>
-                  <th className="py-3.5 px-4 text-cyan-500">License Key</th>
-                  <th className="py-3.5 px-4 text-cyan-500">Remaining</th>
-                  <th className="py-3.5 px-4 text-cyan-500">Expiry Date</th>
-                  <th className="py-3.5 px-4 text-cyan-500">Bound Workstation (HWID)</th>
-                  <th className="py-3.5 px-4 text-cyan-500">Node Status</th>
-                  <th className="py-3.5 px-4 text-right text-cyan-500">Actions</th>
+                  <th className={`py-3.5 px-4 ${isLight ? "text-sky-900" : "text-cyan-400"}`}>Client &amp; Organization</th>
+                  <th className={`py-3.5 px-4 ${isLight ? "text-sky-900" : "text-cyan-400"}`}>License Key</th>
+                  <th className={`py-3.5 px-4 ${isLight ? "text-sky-900" : "text-cyan-400"}`}>Remaining</th>
+                  <th className={`py-3.5 px-4 ${isLight ? "text-sky-900" : "text-cyan-400"}`}>Expiry Date</th>
+                  <th className={`py-3.5 px-4 ${isLight ? "text-sky-900" : "text-cyan-400"}`}>Bound Workstation (HWID)</th>
+                  <th className={`py-3.5 px-4 ${isLight ? "text-sky-900" : "text-cyan-400"}`}>Node Status</th>
+                  <th className={`py-3.5 px-4 text-right ${isLight ? "text-sky-900" : "text-cyan-400"}`}>Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: "var(--table-divide)" }}>
@@ -1205,25 +1363,64 @@ export default function LicensePortalDashboard() {
                     const daysLeft = calculateDays(lic.expiresAt);
                     const isExpired = new Date(lic.expiresAt).getTime() <= Date.now();
 
+                    // Status Badge Styling Helper
+                    let badgeClass = "";
+                    let badgeLabel = "";
+                    if (!lic.isActive) {
+                      badgeLabel = "BLOCKED";
+                      badgeClass = isLight
+                        ? "bg-red-50 text-red-800 border border-red-300 font-extrabold shadow-sm"
+                        : "bg-red-950/80 text-red-400 border border-red-800/60 font-bold shadow-[0_0_10px_rgba(239,68,68,0.2)]";
+                    } else if (isExpired) {
+                      badgeLabel = "EXPIRED";
+                      badgeClass = isLight
+                        ? "bg-red-50 text-red-800 border border-red-300 font-extrabold shadow-sm"
+                        : "bg-red-950/80 text-red-400 border border-red-800/60 font-bold shadow-[0_0_10px_rgba(239,68,68,0.2)]";
+                    } else if (daysLeft <= 7) {
+                      badgeLabel = `⚠️ ${daysLeft} Days`;
+                      badgeClass = isLight
+                        ? "bg-amber-50 text-amber-900 border border-amber-300 font-extrabold shadow-sm"
+                        : "bg-amber-950/80 text-amber-400 border border-amber-800/60 font-bold shadow-[0_0_10px_rgba(245,158,11,0.2)]";
+                    } else {
+                      badgeLabel = `🟢 ${daysLeft} Days`;
+                      badgeClass = isLight
+                        ? "bg-emerald-50 text-emerald-800 border border-emerald-300 font-extrabold shadow-sm"
+                        : "bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-bold shadow-[0_0_10px_rgba(16,185,129,0.2)]";
+                    }
+
                     return (
-                      <tr key={lic.key} className="hover:bg-cyan-500/10 transition">
+                      <tr
+                        key={lic.key}
+                        className="transition"
+                        style={{
+                          backgroundColor: "transparent",
+                        }}
+                      >
                         {/* Client Name & Org */}
                         <td className="py-3.5 px-4">
-                          <div className="font-bold" style={{ color: "var(--text-primary)" }}>{lic.clientName}</div>
-                          <div className="text-[11px]" style={{ color: "var(--text-secondary)" }}>{lic.organization}</div>
+                          <div className="font-extrabold" style={{ color: "var(--text-primary)" }}>
+                            {lic.clientName}
+                          </div>
+                          <div className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
+                            {lic.organization}
+                          </div>
                           {lic.contactEmail && (
-                            <div className="text-[10px] font-mono" style={{ color: "var(--text-tertiary)" }}>{lic.contactEmail}</div>
+                            <div className="text-[10px] font-mono" style={{ color: "var(--text-tertiary)" }}>
+                              {lic.contactEmail}
+                            </div>
                           )}
                         </td>
 
                         {/* License Key */}
-                        <td className="py-3.5 px-4 font-mono font-bold text-cyan-500">
+                        <td className="py-3.5 px-4 font-mono font-bold">
                           <div className="flex items-center space-x-1.5">
-                            <span>{lic.key}</span>
+                            <span className={isLight ? "text-sky-900 font-black" : "text-cyan-400"}>
+                              {lic.key}
+                            </span>
                             <button
                               onClick={() => copyToClipboard(lic.key, "key")}
                               title="Copy Key"
-                              className="text-slate-400 hover:text-cyan-500 transition cursor-pointer"
+                              className="text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition cursor-pointer"
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>
@@ -1232,27 +1429,13 @@ export default function LicensePortalDashboard() {
 
                         {/* Remaining Days Badge */}
                         <td className="py-3.5 px-4">
-                          {!lic.isActive ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-950/80 text-red-400 border border-red-800/50">
-                              BLOCKED
-                            </span>
-                          ) : isExpired ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-950/80 text-red-400 border border-red-800/50">
-                              EXPIRED
-                            </span>
-                          ) : daysLeft <= 7 ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-400 border border-amber-800/50 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                              ⚠️ {daysLeft} Days
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-                              🟢 {daysLeft} Days
-                            </span>
-                          )}
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] ${badgeClass}`}>
+                            {badgeLabel}
+                          </span>
                         </td>
 
                         {/* Expiry Date */}
-                        <td className="py-3.5 px-4 font-mono" style={{ color: "var(--text-secondary)" }}>
+                        <td className="py-3.5 px-4 font-mono font-semibold" style={{ color: "var(--text-secondary)" }}>
                           {new Date(lic.expiresAt).toLocaleDateString()}
                         </td>
 
@@ -1260,8 +1443,11 @@ export default function LicensePortalDashboard() {
                         <td className="py-3.5 px-4">
                           {lic.hardwareId ? (
                             <div className="flex items-center space-x-1.5">
-                              <Laptop className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                              <span className="font-mono text-[11px] text-cyan-500" title={lic.hardwareId}>
+                              <Laptop className={`w-3.5 h-3.5 shrink-0 ${isLight ? "text-indigo-600" : "text-indigo-400"}`} />
+                              <span
+                                className={`font-mono text-[11px] font-bold ${isLight ? "text-sky-800" : "text-cyan-400"}`}
+                                title={lic.hardwareId}
+                              >
                                 {lic.machineHostname || lic.hardwareId.substring(0, 14) + "..."}
                               </span>
                             </div>
@@ -1275,17 +1461,17 @@ export default function LicensePortalDashboard() {
                         {/* Status */}
                         <td className="py-3.5 px-4">
                           {!lic.isActive ? (
-                            <span className="inline-flex items-center space-x-1 text-red-500 font-bold">
+                            <span className="inline-flex items-center space-x-1 text-red-600 font-extrabold">
                               <XCircle className="w-3.5 h-3.5" />
                               <span>Revoked</span>
                             </span>
                           ) : isExpired ? (
-                            <span className="inline-flex items-center space-x-1 text-red-500 font-bold">
+                            <span className="inline-flex items-center space-x-1 text-red-600 font-extrabold">
                               <AlertTriangle className="w-3.5 h-3.5" />
                               <span>Expired</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center space-x-1 text-emerald-500 font-bold">
+                            <span className="inline-flex items-center space-x-1 text-emerald-600 font-extrabold">
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Active</span>
                             </span>
@@ -1300,7 +1486,11 @@ export default function LicensePortalDashboard() {
                               <button
                                 onClick={() => handleAction(lic.key, "revoke")}
                                 title="Revoke Node Access"
-                                className="px-2.5 py-1 rounded-lg bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-800/50 text-[11px] font-bold transition cursor-pointer"
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                  isLight
+                                    ? "bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 shadow-sm"
+                                    : "bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-800/50"
+                                }`}
                               >
                                 Revoke
                               </button>
@@ -1308,7 +1498,11 @@ export default function LicensePortalDashboard() {
                               <button
                                 onClick={() => handleAction(lic.key, "activate")}
                                 title="Restore Node Access"
-                                className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/50 text-[11px] font-bold transition cursor-pointer"
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                                  isLight
+                                    ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm"
+                                    : "bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/50"
+                                }`}
                               >
                                 Enable
                               </button>
@@ -1344,7 +1538,7 @@ export default function LicensePortalDashboard() {
                                 }
                               }}
                               title="Permanently Delete License"
-                              className="p-1.5 rounded-lg hover:bg-red-950/80 text-slate-400 hover:text-red-400 transition cursor-pointer"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-500/10 transition cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
