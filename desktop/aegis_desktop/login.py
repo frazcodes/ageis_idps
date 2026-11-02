@@ -593,18 +593,24 @@ class _LoginCard(QFrame):
 
         self._client = LicenseClient()
         self._local_lic: LocalLicense | None = self._client.load_local_license()
-        self._mode = "authorized" if self._local_lic else "activate"
+        if self._local_lic:
+            self._mode = "expired" if self._local_lic.is_expired else "authorized"
+        else:
+            self._mode = "activate"
 
+        self._key_field: _IconLineEdit | None = None
         self._build()
 
     def _build(self) -> None:
+        self._key_field = None
+
         # Clear existing layout if rebuilding
         old_layout = self.layout()
         if old_layout is not None:
             QWidget().setLayout(old_layout)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(36, 32, 36, 28)
+        root.setContentsMargins(36, 30, 36, 26)
         root.setSpacing(0)
 
         # ── Logo + branding ──────────────────────────────────────────────
@@ -613,7 +619,7 @@ class _LoginCard(QFrame):
         self._shield = _ShieldLogo()
         logo_row.addWidget(self._shield)
         root.addLayout(logo_row)
-        root.addSpacing(14)
+        root.addSpacing(12)
 
         product = QLabel("AEGIS IDPS")
         product.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -629,14 +635,14 @@ class _LoginCard(QFrame):
             f"color: {_MUTED2}; font-size: 11px; letter-spacing: 2px; background: transparent;"
         )
         root.addWidget(tagline)
-        root.addSpacing(12)
+        root.addSpacing(10)
 
         # Divider line
         divider = QFrame()
         divider.setFixedHeight(1)
         divider.setStyleSheet(f"background: {_BORDER}; border: none;")
         root.addWidget(divider)
-        root.addSpacing(14)
+        root.addSpacing(12)
 
         # ── Hardware ID Pill (Monospace + One-Click Copy) ────────────────
         hwid_frame = QFrame()
@@ -680,22 +686,22 @@ class _LoginCard(QFrame):
         hwid_layout.addWidget(hwid_val, 1)
         hwid_layout.addWidget(self._copy_btn)
         root.addWidget(hwid_frame)
-        root.addSpacing(16)
+        root.addSpacing(14)
 
-        # ── Dynamic Section: Authorized Profile vs Key Activation ─────────
-        if self._mode == "authorized" and self._local_lic:
-            # Authorized Status Banner
-            auth_badge = QLabel("●  STATION AUTHORIZED & SECURED")
+        # ── Dynamic Section: Authorized Profile vs Expired vs Key Activation ─────────
+        if self._mode == "authorized" and self._local_lic and not self._local_lic.is_expired:
+            # 1. Active Station Status Banner
+            auth_badge = QLabel("●  STATION SECURED & LICENSED")
             auth_badge.setStyleSheet(f"color: {_GREEN}; font-size: 11px; font-weight: 700; letter-spacing: 1px; background: transparent;")
             root.addWidget(auth_badge)
-            root.addSpacing(10)
+            root.addSpacing(8)
 
             # Profile Info Box
             profile_card = QFrame()
             profile_card.setStyleSheet(f"""
                 QFrame {{
                     background-color: rgba(16, 185, 129, 0.08);
-                    border: 1px solid rgba(16, 185, 129, 0.25);
+                    border: 1px solid rgba(16, 185, 129, 0.30);
                     border-radius: 10px;
                 }}
             """)
@@ -707,69 +713,94 @@ class _LoginCard(QFrame):
             op_name.setStyleSheet(f"color: {_TEXT}; font-size: 13px; font-weight: 700; background: transparent;")
             org_name = QLabel(f"Org: {self._local_lic.organization}")
             org_name.setStyleSheet(f"color: {_MUTED2}; font-size: 11px; background: transparent;")
-            
-            exp_date = self._local_lic.expires_at[:10] if self._local_lic.expires_at else "Valid"
-            lic_pill = QLabel(f"Key: {self._local_lic.key}  •  Expires: {exp_date}")
-            lic_pill.setStyleSheet(f"color: {_CYAN}; font-family: monospace; font-size: 10px; background: transparent;")
+
+            validity_str = self._format_validity(self._local_lic.expires_at)
+            lic_pill = QLabel(f"Key: {self._local_lic.key}  •  {validity_str}")
+            lic_pill.setStyleSheet(f"color: {_CYAN}; font-family: 'Consolas', monospace; font-size: 10px; font-weight: 600; background: transparent;")
 
             p_layout.addWidget(op_name)
             p_layout.addWidget(org_name)
             p_layout.addWidget(lic_pill)
             root.addWidget(profile_card)
-            root.addSpacing(16)
+            root.addSpacing(14)
 
-            # Main Action Button
+            # Main Action Button: Direct Sign In
             self._login_btn = QPushButton("SIGN IN TO SOC CONSOLE")
             self._login_btn.setFixedHeight(48)
             self._login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self._login_btn.setObjectName("LoginBtn")
-            self._login_btn.setStyleSheet(f"""
-                #LoginBtn {{
-                    background: qlineargradient(
-                        x1:0, y1:0, x2:1, y2:0,
-                        stop:0 {_ACCENT},
-                        stop:1 {_ACCENT2}
-                    );
-                    color: #FFFFFF;
-                    border: none;
-                    border-radius: 10px;
-                    font-size: 13px;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
-                }}
-                #LoginBtn:hover {{
-                    background: qlineargradient(
-                        x1:0, y1:0, x2:1, y2:0,
-                        stop:0 {_ACCENT2},
-                        stop:1 {_ACCENT3}
-                    );
-                }}
-                #LoginBtn:disabled {{
-                    background: #1E293B;
-                    color: {_MUTED};
-                }}
-            """)
+            self._login_btn.setStyleSheet(self._login_btn_style())
             self._login_btn.clicked.connect(self._on_enter_authorized)
             root.addWidget(self._login_btn)
-            root.addSpacing(10)
+            root.addSpacing(8)
 
-            # Option to change license key
-            switch_btn = QPushButton("Change or Renew Node License Key")
+            # Option to switch station key
+            switch_btn = QPushButton("Switch or enter a different key")
             switch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             switch_btn.setStyleSheet(f"""
                 QPushButton {{
                     background: transparent;
                     border: none;
-                    color: {_ACCENT3};
-                    font-size: 11px;
+                    color: {_MUTED2};
+                    font-size: 10.5px;
                 }}
                 QPushButton:hover {{ color: {_CYAN}; text-decoration: underline; }}
             """)
             switch_btn.clicked.connect(self._switch_to_activation_mode)
             root.addWidget(switch_btn)
 
+        elif self._mode == "expired" and self._local_lic:
+            # 2. Expired License Mode (Access Restricted)
+            exp_badge = QLabel("●  LICENSE EXPIRED — ACCESS RESTRICTED")
+            exp_badge.setStyleSheet(f"color: {_RED}; font-size: 11px; font-weight: 700; letter-spacing: 1px; background: transparent;")
+            root.addWidget(exp_badge)
+            root.addSpacing(8)
+
+            exp_card = QFrame()
+            exp_card.setStyleSheet(f"""
+                QFrame {{
+                    background-color: rgba(239, 68, 68, 0.08);
+                    border: 1px solid rgba(239, 68, 68, 0.35);
+                    border-radius: 10px;
+                }}
+            """)
+            exp_layout = QVBoxLayout(exp_card)
+            exp_layout.setContentsMargins(14, 10, 14, 10)
+            exp_layout.setSpacing(3)
+
+            exp_op = QLabel(f"Operator: {self._local_lic.client_name}")
+            exp_op.setStyleSheet(f"color: {_TEXT}; font-size: 12px; font-weight: 700; background: transparent;")
+            exp_notice = QLabel("License duration ended. Contact Master Admin to renew.")
+            exp_notice.setStyleSheet(f"color: {_RED}; font-size: 11px; background: transparent;")
+
+            exp_layout.addWidget(exp_op)
+            exp_layout.addWidget(exp_notice)
+            root.addWidget(exp_card)
+            root.addSpacing(10)
+
+            desc = QLabel("Enter your renewed 16-character license key:")
+            desc.setStyleSheet(f"color: {_MUTED2}; font-size: 11px; background: transparent;")
+            root.addWidget(desc)
+            root.addSpacing(8)
+
+            self._key_field = _IconLineEdit("AEGIS-XXXX-XXXX-XXXX", icon="🔑", parent=self)
+            self._key_field._edit.setMaxLength(25)
+            self._key_field._edit.setStyleSheet(self._key_field._edit.styleSheet() + "; font-family: 'Consolas', monospace; font-weight: bold; letter-spacing: 1px;")
+            self._key_field._edit.textChanged.connect(lambda t: self._key_field._edit.setText(t.upper()) if t != t.upper() else None)
+            self._key_field.returnPressed.connect(self._on_activate_clicked)
+            root.addWidget(self._key_field)
+            root.addSpacing(14)
+
+            self._login_btn = QPushButton("VERIFY & ACTIVATE RENEWED KEY")
+            self._login_btn.setFixedHeight(48)
+            self._login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._login_btn.setObjectName("LoginBtn")
+            self._login_btn.setStyleSheet(self._login_btn_style())
+            self._login_btn.clicked.connect(self._on_activate_clicked)
+            root.addWidget(self._login_btn)
+
         else:
-            # Activation Mode
+            # 3. Fresh Node Activation Mode
             act_badge = QLabel("●  ENTERPRISE NODE ACTIVATION")
             act_badge.setStyleSheet(f"color: {_CYAN}; font-size: 11px; font-weight: 700; letter-spacing: 1px; background: transparent;")
             root.addWidget(act_badge)
@@ -778,59 +809,34 @@ class _LoginCard(QFrame):
             desc = QLabel("Enter your 16-character license key issued by Aegis Cloud:")
             desc.setStyleSheet(f"color: {_MUTED2}; font-size: 11px; background: transparent;")
             root.addWidget(desc)
-            root.addSpacing(12)
+            root.addSpacing(10)
 
             self._key_field = _IconLineEdit("AEGIS-XXXX-XXXX-XXXX", icon="🔑", parent=self)
             self._key_field._edit.setMaxLength(25)
-            self._key_field._edit.setStyleSheet(self._key_field._edit.styleSheet() + "; font-family: monospace; font-weight: bold; letter-spacing: 1px;")
+            self._key_field._edit.setStyleSheet(self._key_field._edit.styleSheet() + "; font-family: 'Consolas', monospace; font-weight: bold; letter-spacing: 1px;")
             self._key_field._edit.textChanged.connect(lambda t: self._key_field._edit.setText(t.upper()) if t != t.upper() else None)
             self._key_field.returnPressed.connect(self._on_activate_clicked)
             root.addWidget(self._key_field)
-            root.addSpacing(16)
+            root.addSpacing(14)
 
             self._login_btn = QPushButton("AUTHORIZE & ENTER CONSOLE")
             self._login_btn.setFixedHeight(48)
             self._login_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self._login_btn.setObjectName("LoginBtn")
-            self._login_btn.setStyleSheet(f"""
-                #LoginBtn {{
-                    background: qlineargradient(
-                        x1:0, y1:0, x2:1, y2:0,
-                        stop:0 {_ACCENT},
-                        stop:1 {_ACCENT2}
-                    );
-                    color: #FFFFFF;
-                    border: none;
-                    border-radius: 10px;
-                    font-size: 13px;
-                    font-weight: 700;
-                    letter-spacing: 0.5px;
-                }}
-                #LoginBtn:hover {{
-                    background: qlineargradient(
-                        x1:0, y1:0, x2:1, y2:0,
-                        stop:0 {_ACCENT2},
-                        stop:1 {_ACCENT3}
-                    );
-                }}
-                #LoginBtn:disabled {{
-                    background: #1E293B;
-                    color: {_MUTED};
-                }}
-            """)
+            self._login_btn.setStyleSheet(self._login_btn_style())
             self._login_btn.clicked.connect(self._on_activate_clicked)
             root.addWidget(self._login_btn)
-            root.addSpacing(10)
+            root.addSpacing(8)
 
-            if self._local_lic:
-                cancel_btn = QPushButton("Cancel (Use current active license)")
+            if self._local_lic and not self._local_lic.is_expired:
+                cancel_btn = QPushButton("Cancel (Return to active license)")
                 cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 cancel_btn.setStyleSheet(f"""
                     QPushButton {{
                         background: transparent;
                         border: none;
                         color: {_MUTED2};
-                        font-size: 11px;
+                        font-size: 10.5px;
                     }}
                     QPushButton:hover {{ color: {_TEXT}; }}
                 """)
@@ -873,6 +879,50 @@ class _LoginCard(QFrame):
 
     # -- Actions -------------------------------------------------------------
 
+    def _login_btn_style(self) -> str:
+        return f"""
+            #LoginBtn {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {_ACCENT},
+                    stop:1 {_ACCENT2}
+                );
+                color: #FFFFFF;
+                border: none;
+                border-radius: 10px;
+                font-size: 13px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }}
+            #LoginBtn:hover {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {_ACCENT2},
+                    stop:1 {_ACCENT3}
+                );
+            }}
+            #LoginBtn:disabled {{
+                background: #1E293B;
+                color: {_MUTED};
+            }}
+        """
+
+    def _format_validity(self, expires_at: str) -> str:
+        if not expires_at or "2099" in expires_at or "lifetime" in expires_at.lower():
+            return "Perpetual Lifetime License"
+        try:
+            exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            now = datetime.now(UTC)
+            diff = exp_dt.timestamp() - now.timestamp()
+            if diff <= 0:
+                return "Expired"
+            days = max(1, int(diff // 86400))
+            if days == 1:
+                return f"Expires in 1 day ({exp_dt.strftime('%b %d, %Y')})"
+            return f"{days} days remaining ({exp_dt.strftime('%b %d, %Y')})"
+        except Exception:
+            return f"Expires: {expires_at[:10]}"
+
     def _copy_hwid(self) -> None:
         """Copy Hardware ID to system clipboard with instant feedback."""
         clipboard = QApplication.clipboard()
@@ -884,37 +934,61 @@ class _LoginCard(QFrame):
     def _switch_to_activation_mode(self) -> None:
         self._mode = "activate"
         self._build()
-        if hasattr(self, "_key_field"):
-            self._key_field.set_focus()
+        if self._key_field is not None:
+            try:
+                self._key_field.set_focus()
+            except RuntimeError:
+                pass
 
     def _switch_to_authorized_mode(self) -> None:
-        self._mode = "authorized"
+        self._local_lic = self._client.load_local_license()
+        if self._local_lic:
+            self._mode = "expired" if self._local_lic.is_expired else "authorized"
+        else:
+            self._mode = "activate"
         self._build()
 
     def set_focus(self) -> None:
-        if self._mode == "activate" and hasattr(self, "_key_field"):
-            self._key_field.set_focus()
+        if self._key_field is not None:
+            try:
+                self._key_field.set_focus()
+            except RuntimeError:
+                pass
 
     def _on_enter_authorized(self) -> None:
         """Sign in using current active local license."""
+        self._local_lic = self._client.load_local_license()
         if not self._local_lic:
             self._switch_to_activation_mode()
+            return
+
+        if self._local_lic.is_expired:
+            self._show_error("License key has expired. Please contact admin to renew.")
+            self._mode = "expired"
+            self._build()
             return
 
         self._set_loading(True, "Accessing Console…")
         op_name = self._local_lic.client_name
         key = self._local_lic.key
-        QTimer.singleShot(600, lambda: self.authenticated.emit(op_name, key))
+        QTimer.singleShot(400, lambda: self.authenticated.emit(op_name, key))
 
     def _on_activate_clicked(self) -> None:
         """Validate license key directly with Firebase Cloud or API."""
-        if not hasattr(self, "_key_field"):
+        if self._key_field is None:
             return
 
-        key = self._key_field.text().strip().upper()
+        try:
+            key = self._key_field.text().strip().upper()
+        except RuntimeError:
+            return
+
         if not key or len(key) < 5:
             self._show_error("Please enter your 16-character license key.")
-            self._key_field.shake()
+            try:
+                self._key_field.shake()
+            except RuntimeError:
+                pass
             return
 
         self._error_lbl.setText("")
@@ -931,7 +1005,11 @@ class _LoginCard(QFrame):
                 self._set_loading(False)
                 err_msg = res.get("message", "License verification failed.")
                 self._show_error(err_msg)
-                self._key_field.shake()
+                if self._key_field is not None:
+                    try:
+                        self._key_field.shake()
+                    except RuntimeError:
+                        pass
 
         QTimer.singleShot(100, _do_verify)
 
@@ -943,14 +1021,29 @@ class _LoginCard(QFrame):
 
     def show_auth_error(self) -> None:
         self._show_error("Access denied. License authentication rejected.")
-        if hasattr(self, "_key_field"):
-            self._key_field.shake()
+        if self._key_field is not None:
+            try:
+                self._key_field.shake()
+            except RuntimeError:
+                pass
 
     def _set_loading(self, loading: bool, text: str = "Authenticating…") -> None:
         self._login_btn.setEnabled(not loading)
-        if hasattr(self, "_key_field"):
-            self._key_field.setEnabled(not loading)
-        self._login_btn.setText(text if loading else ("SIGN IN TO SOC CONSOLE" if self._mode == "authorized" else "AUTHORIZE & ENTER CONSOLE"))
+        if self._key_field is not None:
+            try:
+                self._key_field.setEnabled(not loading)
+            except RuntimeError:
+                self._key_field = None
+
+        if loading:
+            self._login_btn.setText(text)
+        else:
+            if self._mode == "authorized":
+                self._login_btn.setText("SIGN IN TO SOC CONSOLE")
+            elif self._mode == "expired":
+                self._login_btn.setText("VERIFY & ACTIVATE RENEWED KEY")
+            else:
+                self._login_btn.setText("AUTHORIZE & ENTER CONSOLE")
 
 
 # ---------------------------------------------------------------------------
