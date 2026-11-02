@@ -1153,6 +1153,20 @@ class LoginWindow(QWidget):
 
     def accept_login(self, username: str) -> None:
         """Call this after successful external credential verification."""
+        try:
+            import threading
+            def _speak_worker() -> None:
+                try:
+                    import win32com.client
+                    speaker = win32com.client.Dispatch("SAPI.SpVoice")
+                    speaker.Rate = 1
+                    speaker.Speak(f"Welcome to Aegis, {username}")
+                except Exception:
+                    pass
+            threading.Thread(target=_speak_worker, daemon=True).start()
+        except Exception:
+            pass
+
         def _after_fade() -> None:
             self.hide()
             self.close()

@@ -38,6 +38,8 @@ import {
   Sun,
   Moon,
   Palette,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { License, LicensePlan, LicenseStats } from "@/lib/types";
 
@@ -206,10 +208,82 @@ function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
   return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-0" />;
 }
 
+// ── Cyber Sound & Voice Synthesis System ───────────────────────────────────
+function playCyberWelcomeAudio(isMuted: boolean) {
+  if (isMuted) return;
+  try {
+    // 1. Futuristic Sci-Fi Synth Chord via Web Audio API
+    const AudioContextClass =
+      typeof window !== "undefined" &&
+      ((window as any).AudioContext || (window as any).webkitAudioContext);
+    if (AudioContextClass) {
+      const audioCtx = new AudioContextClass();
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+
+      // Harmonic futuristic chord: E4, A4, C#5, E5, A5
+      const chord = [329.63, 440.0, 554.37, 659.25, 880.0];
+      chord.forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.07);
+
+        gain.gain.setValueAtTime(0.0001, audioCtx.currentTime + idx * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.12, audioCtx.currentTime + idx * 0.07 + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + idx * 0.07 + 1.2);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(audioCtx.currentTime + idx * 0.07);
+        osc.stop(audioCtx.currentTime + idx * 0.07 + 1.3);
+      });
+    }
+
+    // 2. Cyber AI Voice via Web Speech API
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance("Welcome to Aegis. Master access granted.");
+      utterance.rate = 0.92;
+      utterance.pitch = 1.05;
+      utterance.volume = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          (v.name.includes("Google") ||
+            v.name.includes("Natural") ||
+            v.name.includes("Zira") ||
+            v.name.includes("Samantha") ||
+            v.name.includes("David"))
+      );
+      if (preferred) {
+        utterance.voice = preferred;
+      }
+
+      // Slightly delay voice so ascending chime plays first
+      setTimeout(() => {
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch {
+          // ignore
+        }
+      }, 350);
+    }
+  } catch (err) {
+    console.warn("Audio synthesis error:", err);
+  }
+}
+
 export default function LicensePortalDashboard() {
   // ── Theme State ───────────────────────────────────────────────────────────
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const isLight = theme === "light";
+  const [soundMuted, setSoundMuted] = useState<boolean>(false);
 
   // ── Authentication State ──────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -275,6 +349,17 @@ export default function LicensePortalDashboard() {
     showToast(`Visual Theme set to ${newTheme.toUpperCase()}`, "info");
   };
 
+  const toggleSound = () => {
+    const next = !soundMuted;
+    setSoundMuted(next);
+    try {
+      localStorage.setItem("aegis_sound_muted", String(next));
+    } catch {
+      // ignore
+    }
+    showToast(next ? "Audio & AI voice muted" : "Audio sound & AI voice activated", "info");
+  };
+
   // Update live clock
   useEffect(() => {
     const updateTime = () => {
@@ -297,6 +382,11 @@ export default function LicensePortalDashboard() {
       const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
       if (storedAuth === "authenticated") {
         setIsAuthenticated(true);
+      }
+
+      const storedMute = localStorage.getItem("aegis_sound_muted");
+      if (storedMute === "true") {
+        setSoundMuted(true);
       }
     } catch {
       // Ignore localStorage read errors in SSR
@@ -344,6 +434,7 @@ export default function LicensePortalDashboard() {
         } catch {
           // ignore
         }
+        playCyberWelcomeAudio(soundMuted);
         showToast("Welcome Master Operator. SOC Cockpit Initialized.", "success");
       }, 1700);
     } else {
@@ -583,9 +674,23 @@ export default function LicensePortalDashboard() {
           ></div>
         </div>
 
-        {/* Theme Switcher Top-Right on Login Screen */}
-        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20">
+        {/* Theme Switcher & Audio Controls Top-Right on Login Screen */}
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 flex items-center space-x-2">
           <ThemeToggler />
+          <button
+            type="button"
+            onClick={toggleSound}
+            title={soundMuted ? "Unmute AI Voice & Audio" : "Mute Sound"}
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer hover:border-cyan-400 shadow-inner"
+            style={{
+              backgroundColor: "var(--toggler-bg)",
+              borderColor: "var(--toggler-border)",
+              color: soundMuted ? "var(--text-tertiary)" : "var(--accent-text)",
+            }}
+          >
+            {soundMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />}
+            <span className="hidden sm:inline">{soundMuted ? "Muted" : "Voice"}</span>
+          </button>
         </div>
 
         {/* Ambient Glowing Glass Orbs */}
@@ -904,6 +1009,22 @@ export default function LicensePortalDashboard() {
 
             {/* Theme Toggler Pill */}
             <ThemeToggler />
+
+            {/* Sound Toggle Pill */}
+            <button
+              type="button"
+              onClick={toggleSound}
+              title={soundMuted ? "Unmute AI Voice & Audio" : "Mute Sound"}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer hover:border-cyan-400"
+              style={{
+                backgroundColor: "var(--input-bg)",
+                borderColor: "var(--input-border)",
+                color: soundMuted ? "var(--text-tertiary)" : "var(--accent-text)",
+              }}
+            >
+              {soundMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />}
+              <span className="hidden sm:inline">{soundMuted ? "Muted" : "Voice"}</span>
+            </button>
 
             {/* Manual Refresh Button */}
             <button
