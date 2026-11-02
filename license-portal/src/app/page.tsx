@@ -35,6 +35,9 @@ import {
   Terminal,
   Radio,
   Globe,
+  Sun,
+  Moon,
+  Palette,
 } from "lucide-react";
 import { License, LicensePlan, LicenseStats } from "@/lib/types";
 
@@ -42,9 +45,12 @@ import { License, LicensePlan, LicenseStats } from "@/lib/types";
 const DEFAULT_ADMIN_USER = "admin";
 const DEFAULT_ADMIN_PASS = "aegis@2026";
 const AUTH_STORAGE_KEY = "aegis_cloud_admin_auth";
+const THEME_STORAGE_KEY = "aegis_theme_mode";
+
+type ThemeMode = "dark" | "blue" | "light";
 
 // ── Interactive Animated Cyber Canvas Background Component ─────────────────
-function CyberBackgroundCanvas() {
+function CyberBackgroundCanvas({ theme }: { theme: ThemeMode }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -75,7 +81,12 @@ function CyberBackgroundCanvas() {
       color: string;
     }> = [];
 
-    const colors = ["#00F0FF", "#38BDF8", "#10B981", "#818CF8", "#06B6D4"];
+    const darkColors = ["#00F0FF", "#38BDF8", "#10B981", "#818CF8", "#06B6D4"];
+    const blueColors = ["#60A5FA", "#38BDF8", "#34D399", "#818CF8", "#93C5FD"];
+    const lightColors = ["#0284C7", "#2563EB", "#059669", "#4F46E5", "#0891B2"];
+
+    const activeColors = theme === "light" ? lightColors : theme === "blue" ? blueColors : darkColors;
+
     for (let i = 0; i < nodeCount; i++) {
       nodes.push({
         x: Math.random() * width,
@@ -83,7 +94,7 @@ function CyberBackgroundCanvas() {
         vx: (Math.random() - 0.5) * 0.6,
         vy: (Math.random() - 0.5) * 0.6,
         radius: Math.random() * 2 + 1,
-        color: colors[Math.floor(Math.random() * colors.length)],
+        color: activeColors[Math.floor(Math.random() * activeColors.length)],
       });
     }
 
@@ -122,7 +133,14 @@ function CyberBackgroundCanvas() {
       // Draw floating cyber data stream tokens
       ctx.font = "9px 'Consolas', monospace";
       floatingTokens.forEach((token) => {
-        ctx.fillStyle = `rgba(0, 240, 255, ${token.opacity})`;
+        const tokenColor =
+          theme === "light"
+            ? `rgba(2, 132, 199, ${token.opacity * 0.75})`
+            : theme === "blue"
+            ? `rgba(96, 165, 250, ${token.opacity})`
+            : `rgba(0, 240, 255, ${token.opacity})`;
+
+        ctx.fillStyle = tokenColor;
         ctx.fillText(token.text, token.x, token.y);
         token.y -= token.speed;
         if (token.y < -15) {
@@ -144,7 +162,7 @@ function CyberBackgroundCanvas() {
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         ctx.fillStyle = node.color;
         ctx.shadowColor = node.color;
-        ctx.shadowBlur = 6;
+        ctx.shadowBlur = theme === "light" ? 3 : 6;
         ctx.fill();
         ctx.shadowBlur = 0;
 
@@ -159,8 +177,15 @@ function CyberBackgroundCanvas() {
             ctx.beginPath();
             ctx.moveTo(node.x, node.y);
             ctx.lineTo(other.x, other.y);
-            const alpha = (1 - dist / 130) * 0.22;
-            ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+            const alpha = (1 - dist / 130) * (theme === "light" ? 0.18 : 0.22);
+            const strokeColor =
+              theme === "light"
+                ? `rgba(2, 132, 199, ${alpha})`
+                : theme === "blue"
+                ? `rgba(96, 165, 250, ${alpha})`
+                : `rgba(56, 189, 248, ${alpha})`;
+
+            ctx.strokeStyle = strokeColor;
             ctx.lineWidth = 0.8;
             ctx.stroke();
           }
@@ -176,12 +201,15 @@ function CyberBackgroundCanvas() {
       window.removeEventListener("resize", handleResize);
       cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [theme]);
 
   return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-0" />;
 }
 
 export default function LicensePortalDashboard() {
+  // ── Theme State ───────────────────────────────────────────────────────────
+  const [theme, setTheme] = useState<ThemeMode>("dark");
+
   // ── Authentication State ──────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authChecking, setAuthChecking] = useState<boolean>(true);
@@ -236,6 +264,16 @@ export default function LicensePortalDashboard() {
     }, 3200);
   }, []);
 
+  const handleSetTheme = (newTheme: ThemeMode) => {
+    setTheme(newTheme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+    } catch {
+      // ignore
+    }
+    showToast(`Visual Theme set to ${newTheme.toUpperCase()}`, "info");
+  };
+
   // Update live clock
   useEffect(() => {
     const updateTime = () => {
@@ -247,11 +285,16 @@ export default function LicensePortalDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check stored session on mount
+  // Check stored theme and session on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (stored === "authenticated") {
+      const storedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+      if (storedTheme === "dark" || storedTheme === "blue" || storedTheme === "light") {
+        setTheme(storedTheme);
+      }
+
+      const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (storedAuth === "authenticated") {
         setIsAuthenticated(true);
       }
     } catch {
@@ -451,12 +494,62 @@ export default function LicensePortalDashboard() {
     return true;
   });
 
+  // Reusable Theme Toggler Component
+  const ThemeToggler = () => (
+    <div className="flex items-center p-1 rounded-xl bg-slate-950/40 border border-slate-700/60 shadow-inner">
+      <button
+        type="button"
+        onClick={() => handleSetTheme("dark")}
+        title="Obsidian Dark Mode"
+        className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+          theme === "dark"
+            ? "bg-slate-900 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.4)] border border-cyan-500/50"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        <Moon className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">Dark</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => handleSetTheme("blue")}
+        title="Cyber Navy Blue Mode"
+        className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+          theme === "blue"
+            ? "bg-blue-900 text-blue-200 shadow-[0_0_14px_rgba(59,130,246,0.5)] border border-blue-400/60"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        <Palette className="w-3.5 h-3.5 text-blue-400" />
+        <span className="hidden sm:inline">Blue</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => handleSetTheme("light")}
+        title="Clean Tech Light Mode"
+        className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+          theme === "light"
+            ? "bg-white text-sky-700 shadow-md border border-sky-400 font-extrabold"
+            : "text-slate-400 hover:text-slate-200"
+        }`}
+      >
+        <Sun className="w-3.5 h-3.5 text-amber-500" />
+        <span className="hidden sm:inline">Light</span>
+      </button>
+    </div>
+  );
+
   // ──────────────────────────────────────────────────────────────────────────
   // VIEW 1: Master Admin Authentication Screen (Interactive Cyber Canvas + HUD)
   // ──────────────────────────────────────────────────────────────────────────
   if (authChecking) {
     return (
-      <div className="min-h-screen bg-[#030712] flex items-center justify-center">
+      <div
+        className={`min-h-screen theme-${theme} flex items-center justify-center`}
+        style={{ backgroundColor: "var(--bg-primary)" }}
+      >
         <div className="w-10 h-10 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin"></div>
       </div>
     );
@@ -464,13 +557,21 @@ export default function LicensePortalDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#030712] text-slate-100 flex items-center justify-center p-4 relative overflow-hidden selection:bg-cyan-500 selection:text-black">
+      <div
+        className={`min-h-screen theme-${theme} cyber-grid flex items-center justify-center p-4 relative overflow-hidden transition-colors duration-300 selection:bg-cyan-500 selection:text-black`}
+        style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)" }}
+      >
         {/* Hardware-accelerated Interactive Cyber Particles Canvas */}
-        <CyberBackgroundCanvas />
+        <CyberBackgroundCanvas theme={theme} />
 
         {/* Animated Cyber Scanning Laser Line */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-          <div className="w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent animate-scanline opacity-80"></div>
+          <div className="w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent animate-scanline opacity-75"></div>
+        </div>
+
+        {/* Theme Switcher Top-Right on Login Screen */}
+        <div className="absolute top-6 right-6 z-20">
+          <ThemeToggler />
         </div>
 
         {/* Ambient Glowing Glass Orbs */}
@@ -479,7 +580,7 @@ export default function LicensePortalDashboard() {
         <div className="absolute top-1/2 left-1/2 w-80 h-80 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
 
         {/* Master Admin Glassmorphism Card */}
-        <div className="w-full max-w-md relative z-10 glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl shadow-cyan-950/80 border border-cyan-500/40 backdrop-blur-3xl">
+        <div className="w-full max-w-md relative z-10 glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl backdrop-blur-3xl">
           {/* Cyber HUD Corner Brackets */}
           <div className="absolute top-3 left-3 w-3.5 h-3.5 border-t-2 border-l-2 border-cyan-400"></div>
           <div className="absolute top-3 right-3 w-3.5 h-3.5 border-t-2 border-r-2 border-cyan-400"></div>
@@ -491,50 +592,50 @@ export default function LicensePortalDashboard() {
             <div className="py-6 flex flex-col items-center text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
               {/* Rotating Triple Concentric HUD Reactor */}
               <div className="relative w-28 h-28 flex items-center justify-center">
-                {/* Outer dashed spinning ring */}
                 <div className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-400 animate-[spin_4s_linear_infinite] opacity-80"></div>
-                {/* Middle counter-spinning ring */}
                 <div className="absolute inset-2 rounded-full border border-emerald-400/70 border-t-transparent animate-[spin_3s_linear_infinite_reverse]"></div>
-                {/* Inner glowing pulse core */}
                 <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/30 via-emerald-500/30 to-blue-500/40 border border-cyan-300 flex items-center justify-center shadow-[0_0_30px_rgba(6,182,212,0.6)] animate-pulse">
                   <Shield className="w-8 h-8 text-cyan-200" />
                 </div>
               </div>
 
               <div>
-                <h2 className="text-xl font-black text-cyan-300 tracking-widest uppercase">
+                <h2 className="text-xl font-black text-cyan-400 tracking-widest uppercase">
                   ACCESS GRANTED
                 </h2>
-                <p className="text-[11px] font-mono text-emerald-400 mt-1 tracking-wider">
+                <p className="text-[11px] font-mono text-emerald-500 mt-1 tracking-wider font-bold">
                   MASTER SECURITY CLEARANCE: LEVEL 5
                 </p>
               </div>
 
               {/* Glowing Cyber Progress Bar */}
               <div className="w-full space-y-2">
-                <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-cyan-500/50 p-0.5">
+                <div className="w-full bg-slate-950/90 rounded-full h-3 overflow-hidden border border-cyan-500/50 p-0.5">
                   <div
                     className="bg-gradient-to-r from-cyan-400 via-emerald-400 to-sky-300 h-full rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(56,189,248,0.9)]"
                     style={{ width: `${authProgress}%` }}
                   ></div>
                 </div>
-                <div className="flex justify-between text-[11px] font-mono text-slate-300">
+                <div className="flex justify-between text-[11px] font-mono" style={{ color: "var(--text-secondary)" }}>
                   <span className="text-cyan-400 font-bold">{authStepText}</span>
                   <span className="font-extrabold text-emerald-400">{authProgress}%</span>
                 </div>
               </div>
 
               {/* Simulated Cyber Terminal Output */}
-              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-cyan-900/60 text-[10px] font-mono text-slate-400 text-left w-full space-y-1.5 shadow-inner">
-                <div className="text-emerald-400 flex items-center space-x-1.5">
+              <div
+                className="p-3.5 rounded-xl border text-[10px] font-mono text-left w-full space-y-1.5 shadow-inner"
+                style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
+              >
+                <div className="text-emerald-500 flex items-center space-x-1.5 font-bold">
                   <span className="text-cyan-400">&gt;</span>
                   <span>RSA-256 JWT Signed: OK (aegis-license-system)</span>
                 </div>
-                <div className="text-cyan-300 flex items-center space-x-1.5">
+                <div className="text-cyan-400 flex items-center space-x-1.5">
                   <span className="text-cyan-400">&gt;</span>
                   <span>Hardware Fingerprint Signature: VERIFIED</span>
                 </div>
-                <div className="text-slate-400 flex items-center space-x-1.5 animate-pulse">
+                <div className="flex items-center space-x-1.5 animate-pulse" style={{ color: "var(--text-tertiary)" }}>
                   <span className="text-cyan-400">&gt;</span>
                   <span>Launching SOC Command Cockpit...</span>
                 </div>
@@ -552,17 +653,20 @@ export default function LicensePortalDashboard() {
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <h1 className="text-2xl font-black tracking-wider text-slate-100">
+                  <h1 className="text-2xl font-black tracking-wider" style={{ color: "var(--text-primary)" }}>
                     AEGIS IDPS
                   </h1>
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-400 border border-cyan-700/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
                     SOC v2.4
                   </span>
                 </div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-cyan-400 mt-1">
+                <p className="text-xs font-semibold uppercase tracking-widest text-cyan-500 mt-1">
                   Cloud License Operations Portal
                 </p>
-                <div className="mt-3 inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-slate-950/90 border border-slate-800 text-[11px] text-slate-300 font-mono">
+                <div
+                  className="mt-3 inline-flex items-center space-x-2 px-3.5 py-1 rounded-full border text-[11px] font-mono"
+                  style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-secondary)" }}
+                >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                   <span>RESTRICTED MASTER CONSOLE</span>
                 </div>
@@ -571,7 +675,7 @@ export default function LicensePortalDashboard() {
               {/* Login Form */}
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                     Administrator ID
                   </label>
                   <div className="relative">
@@ -582,14 +686,15 @@ export default function LicensePortalDashboard() {
                       placeholder="e.g. admin"
                       value={loginUsername}
                       onChange={(e: any) => setLoginUsername(e.target.value)}
-                      className="w-full bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
+                      style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                      className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-4 py-2.5 text-sm placeholder-slate-500 outline-none transition"
                     />
                   </div>
                 </div>
 
                 {/* Password field with EYE icon toggle */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                     Master Cryptographic Passcode
                   </label>
                   <div className="relative">
@@ -600,12 +705,13 @@ export default function LicensePortalDashboard() {
                       placeholder="••••••••••••"
                       value={loginPassword}
                       onChange={(e: any) => setLoginPassword(e.target.value)}
-                      className="w-full bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-11 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition font-mono"
+                      style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                      className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-11 py-2.5 text-sm placeholder-slate-500 outline-none transition font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-cyan-300 transition cursor-pointer"
+                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-cyan-400 transition cursor-pointer"
                       title={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -630,14 +736,14 @@ export default function LicensePortalDashboard() {
               </form>
 
               {/* Demo Credentials Quick-Fill helper */}
-              <div className="mt-6 pt-5 border-t border-slate-800/80 text-center">
+              <div className="mt-6 pt-5 border-t border-slate-700/50 text-center">
                 <button
                   type="button"
                   onClick={() => {
                     setLoginUsername("admin");
                     setLoginPassword("aegis@2026");
                   }}
-                  className="text-[11px] text-cyan-400 hover:text-cyan-300 underline underline-offset-4 transition font-mono"
+                  className="text-[11px] text-cyan-500 hover:text-cyan-400 underline underline-offset-4 transition font-mono font-bold"
                 >
                   [⚡ Click to Pre-fill Master Credentials: admin / aegis@2026]
                 </button>
@@ -650,12 +756,15 @@ export default function LicensePortalDashboard() {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // VIEW 2: Ultra-Premium Cyber SOC Dashboard
+  // VIEW 2: Ultra-Premium Cyber SOC Dashboard (With Tri-Mode Toggler)
   // ──────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 p-4 sm:p-6 md:p-8 relative overflow-hidden selection:bg-cyan-500 selection:text-black">
+    <div
+      className={`min-h-screen theme-${theme} cyber-grid p-4 sm:p-6 md:p-8 relative overflow-hidden transition-colors duration-300 selection:bg-cyan-500 selection:text-black`}
+      style={{ backgroundColor: "var(--bg-primary)", color: "var(--text-primary)" }}
+    >
       {/* Background Interactive Cyber Particles Canvas */}
-      <CyberBackgroundCanvas />
+      <CyberBackgroundCanvas theme={theme} />
 
       {/* Floating Interactive Toast Notification */}
       {toastMessage && (
@@ -664,7 +773,7 @@ export default function LicensePortalDashboard() {
             {toastMessage.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
             {toastMessage.type === "info" && <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />}
             {toastMessage.type === "warn" && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />}
-            <span className="text-xs font-semibold text-slate-100">{toastMessage.text}</span>
+            <span className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{toastMessage.text}</span>
           </div>
         </div>
       )}
@@ -676,25 +785,25 @@ export default function LicensePortalDashboard() {
 
       <div className="max-w-7xl mx-auto space-y-8 relative z-10">
         {/* ── Top Cyber HUD Bar ───────────────────────────────────────────────── */}
-        <header className="glass-panel rounded-2xl p-4 sm:px-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border border-cyan-500/25">
+        <header className="glass-panel rounded-2xl p-4 sm:px-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center space-x-3.5">
             <div className="relative">
               <div className="absolute inset-0 bg-cyan-400/25 rounded-xl blur-md animate-pulse"></div>
               <div className="relative w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/30 to-blue-900/40 border border-cyan-400/40 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
-                <Shield className="w-6 h-6 text-cyan-300" />
+                <Shield className="w-6 h-6 text-cyan-400" />
               </div>
             </div>
 
             <div>
               <div className="flex items-center space-x-2.5">
-                <h1 className="text-lg md:text-xl font-black tracking-wider text-slate-100">
+                <h1 className="text-lg md:text-xl font-black tracking-wider" style={{ color: "var(--text-primary)" }}>
                   AEGIS IDPS
                 </h1>
                 <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-cyan-950 text-cyan-300 border border-cyan-700/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
                   CLOUD LICENSE COMMAND
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
                 Hardware ID Binding, Node Cryptographic Key Issuance &amp; Real-time Firebase Firestore Sync
               </p>
             </div>
@@ -702,22 +811,32 @@ export default function LicensePortalDashboard() {
 
           <div className="flex flex-wrap items-center gap-3">
             {/* Live Cloud Status */}
-            <div className="flex items-center space-x-2 text-xs font-mono bg-slate-950/80 border border-slate-800 px-3.5 py-1.5 rounded-xl text-slate-300">
+            <div
+              className="flex items-center space-x-2 text-xs font-mono border px-3.5 py-1.5 rounded-xl"
+              style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
+            >
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              <span className="text-emerald-400 font-bold">FIREBASE CLOUD: LIVE</span>
+              <span className="text-emerald-500 font-bold">FIREBASE: LIVE</span>
             </div>
 
             {/* Live Clock Pill */}
-            <div className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-mono text-cyan-400">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
+            <div
+              className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono text-cyan-500 font-bold"
+              style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
+            >
+              <Clock className="w-3.5 h-3.5" style={{ color: "var(--text-tertiary)" }} />
               <span>{utcClock}</span>
             </div>
+
+            {/* Theme Toggler Pill */}
+            <ThemeToggler />
 
             {/* Manual Refresh Button */}
             <button
               onClick={handleManualRefresh}
               disabled={refreshing}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-xs text-slate-200 font-semibold transition cursor-pointer"
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer"
+              style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
               title="Refresh Licenses"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-cyan-400" : ""}`} />
@@ -725,7 +844,7 @@ export default function LicensePortalDashboard() {
             </button>
 
             {/* Master Admin Operator Pill */}
-            <div className="hidden sm:flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-cyan-950/50 border border-cyan-700/50 text-xs text-cyan-300 font-bold">
+            <div className="hidden sm:flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-cyan-950/40 border border-cyan-700/50 text-xs text-cyan-400 font-bold">
               <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
               <span>Master Admin</span>
             </div>
@@ -733,7 +852,7 @@ export default function LicensePortalDashboard() {
             {/* Logout Button */}
             <button
               onClick={handleLogout}
-              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-red-950/50 hover:bg-red-900/60 border border-red-800/50 text-xs text-red-300 font-bold transition cursor-pointer"
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/50 border border-red-800/50 text-xs text-red-400 font-bold transition cursor-pointer"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -746,66 +865,66 @@ export default function LicensePortalDashboard() {
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {/* Card 1: Total Issued */}
           <div className="glass-panel p-5 rounded-2xl group hover:border-cyan-400/80 hover:shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all">
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">Total Issued</span>
+            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-500">Total Issued</span>
               <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Key className="w-4 h-4 text-cyan-400" />
+                <Key className="w-4 h-4 text-cyan-500" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-slate-100">{stats.total}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Cryptographic Node Keys</p>
+            <div className="text-2xl sm:text-3xl font-black tracking-tight" style={{ color: "var(--text-primary)" }}>{stats.total}</div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Cryptographic Node Keys</p>
           </div>
 
           {/* Card 2: Active Deployments */}
           <div className="glass-panel p-5 rounded-2xl group hover:border-emerald-400/80 hover:shadow-[0_0_25px_rgba(16,185,129,0.2)] transition-all">
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">Active Nodes</span>
+            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">Active Nodes</span>
               <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-emerald-400">{stats.active}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Operational SOC Stations</p>
+            <div className="text-2xl sm:text-3xl font-black tracking-tight text-emerald-500">{stats.active}</div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Operational SOC Stations</p>
           </div>
 
           {/* Card 3: Expiring Soon */}
           <div className="glass-panel p-5 rounded-2xl group hover:border-amber-400/80 hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] transition-all">
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-300">Expiring Soon</span>
+            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-500">Expiring Soon</span>
               <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Clock className="w-4 h-4 text-amber-400" />
+                <Clock className="w-4 h-4 text-amber-500" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-amber-400">{stats.expiringSoon}</div>
-            <p className="text-[11px] text-slate-400 mt-1">&lt; 7 Days Remaining</p>
+            <div className="text-2xl sm:text-3xl font-black tracking-tight text-amber-500">{stats.expiringSoon}</div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>&lt; 7 Days Remaining</p>
           </div>
 
           {/* Card 4: Bound HWID Machines */}
           <div className="glass-panel p-5 rounded-2xl group hover:border-indigo-400/80 hover:shadow-[0_0_25px_rgba(99,102,241,0.2)] transition-all">
-            <div className="flex items-center justify-between text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">Bound Workstations</span>
+            <div className="flex items-center justify-between mb-2" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-500">Bound Workstations</span>
               <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-400/30 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Laptop className="w-4 h-4 text-indigo-400" />
+                <Laptop className="w-4 h-4 text-indigo-500" />
               </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black tracking-tight text-indigo-300">{stats.connectedDevices}</div>
-            <p className="text-[11px] text-slate-400 mt-1">Locked Machine HWIDs</p>
+            <div className="text-2xl sm:text-3xl font-black tracking-tight text-indigo-500">{stats.connectedDevices}</div>
+            <p className="text-[11px] mt-1" style={{ color: "var(--text-secondary)" }}>Locked Machine HWIDs</p>
           </div>
         </section>
 
         {/* ── Key Issuance Panel (Glassmorphism Form) ────────────────────────── */}
-        <section className="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden border border-cyan-500/30">
+        <section className="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
 
           <div className="flex items-center space-x-3 mb-2">
             <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-400/40 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-              <Key className="w-5 h-5 text-cyan-300" />
+              <Key className="w-5 h-5 text-cyan-500" />
             </div>
-            <h2 className="text-base sm:text-lg font-black text-slate-100 tracking-wide uppercase">
+            <h2 className="text-base sm:text-lg font-black tracking-wide uppercase" style={{ color: "var(--text-primary)" }}>
               ISSUE NEW CLIENT NODE LICENSE
             </h2>
           </div>
-          <p className="text-xs text-slate-400 mb-6 max-w-2xl">
+          <p className="text-xs mb-6 max-w-2xl" style={{ color: "var(--text-secondary)" }}>
             Select duration and client identity. The system cryptographically generates a unique 16-character license key formatted in 4-character blocks, instantly synchronized with Firebase Firestore.
           </p>
 
@@ -813,52 +932,55 @@ export default function LicensePortalDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {/* Field 1: Client Name */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                  Client Full Name <span className="text-cyan-400">*</span>
+                <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
+                  Client Full Name <span className="text-cyan-500">*</span>
                 </label>
                 <div className="relative">
-                  <Users className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                  <Users className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
                   <input
                     type="text"
                     required
                     placeholder="e.g. Ahmad Faraz"
                     value={clientName}
                     onChange={(e: any) => setClientName(e.target.value)}
-                    className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
+                    style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
                   />
                 </div>
               </div>
 
               {/* Field 2: Organization */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                   Organization / Lab / Institution
                 </label>
                 <div className="relative">
-                  <Building className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                  <Building className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
                   <input
                     type="text"
                     placeholder="e.g. Aegis Cyber Defense Lab"
                     value={organization}
                     onChange={(e: any) => setOrganization(e.target.value)}
-                    className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
+                    style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
                   />
                 </div>
               </div>
 
               {/* Field 3: Contact Email */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                   Contact Email / Phone
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                  <Mail className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
                   <input
                     type="text"
                     placeholder="e.g. operator@domain.com"
                     value={contactEmail}
                     onChange={(e: any) => setContactEmail(e.target.value)}
-                    className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
+                    style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
                   />
                 </div>
               </div>
@@ -866,7 +988,7 @@ export default function LicensePortalDashboard() {
 
             {/* Interactive Validity Plan Selector */}
             <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
+              <label className="block text-xs font-bold uppercase tracking-wider mb-2.5" style={{ color: "var(--text-secondary)" }}>
                 License Validity Duration
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
@@ -883,9 +1005,10 @@ export default function LicensePortalDashboard() {
                     onClick={() => setPlan(item.id as LicensePlan)}
                     className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       plan === item.id
-                        ? "bg-cyan-950/70 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] text-cyan-300"
-                        : "bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200"
+                        ? "bg-cyan-500/15 border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.3)] text-cyan-400"
+                        : "border-slate-700/50 hover:border-slate-600 text-slate-400 hover:text-slate-200"
                     }`}
+                    style={plan !== item.id ? { backgroundColor: "var(--input-bg)" } : undefined}
                   >
                     <div className="text-xs font-black">{item.label}</div>
                     <div className="text-[10px] opacity-75">{item.desc}</div>
@@ -897,15 +1020,16 @@ export default function LicensePortalDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Field 5: Max Allowed Devices */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                   Allowed Machines (Hardware Lock)
                 </label>
                 <div className="relative">
-                  <Laptop className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                  <Laptop className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
                   <select
                     value={maxDevices}
                     onChange={(e: any) => setMaxDevices(parseInt(e.target.value, 10))}
-                    className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 outline-none transition cursor-pointer"
+                    style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm outline-none transition cursor-pointer"
                   >
                     <option value={1}>1 Machine (Single Workstation Lock)</option>
                     <option value={3}>3 Machines (Small Lab Cluster)</option>
@@ -916,17 +1040,18 @@ export default function LicensePortalDashboard() {
 
               {/* Field 6: Internal Notes */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "var(--text-secondary)" }}>
                   Operational Reference Notes
                 </label>
                 <div className="relative">
-                  <FileText className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
+                  <FileText className="w-4 h-4 text-cyan-500 absolute left-3.5 top-3" />
                   <input
                     type="text"
                     placeholder="e.g. FYP External Evaluator / Node #01"
                     value={notes}
                     onChange={(e: any) => setNotes(e.target.value)}
-                    className="w-full bg-slate-950/80 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
+                    style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                    className="w-full border focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 rounded-xl pl-10 pr-3.5 py-2.5 text-sm placeholder-slate-500 outline-none transition"
                   />
                 </div>
               </div>
@@ -943,28 +1068,28 @@ export default function LicensePortalDashboard() {
                 <span>{generating ? "Encrypting & Registering on Cloud..." : "⚡ Auto-Generate & Issue License Key"}</span>
               </button>
 
-              <span className="text-xs text-slate-400 font-mono">
-                Auto-syncs to Firebase Firestore Project: <span className="text-cyan-400">aegis-license-system</span>
+              <span className="text-xs font-mono" style={{ color: "var(--text-secondary)" }}>
+                Auto-syncs to Firebase Firestore: <span className="text-cyan-500 font-bold">aegis-license-system</span>
               </span>
             </div>
           </form>
 
           {/* ── Generated Key Result Banner (Holographic Callout) ───────────── */}
           {recentlyGenerated && (
-            <div className="mt-8 p-6 rounded-2xl bg-cyan-950/50 border-2 border-cyan-400/80 shadow-[0_0_30px_rgba(6,182,212,0.35)] animate-in fade-in slide-in-from-top-3 duration-300 relative">
+            <div className="mt-8 p-6 rounded-2xl bg-cyan-500/15 border-2 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.35)] animate-in fade-in slide-in-from-top-3 duration-300 relative">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                   <div className="flex items-center space-x-2 mb-1.5">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                    <span className="text-xs font-black text-cyan-300 uppercase tracking-widest">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                    <span className="text-xs font-black text-cyan-500 uppercase tracking-widest">
                       Node License Successfully Registered &amp; Encrypted
                     </span>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-mono font-black text-cyan-200 tracking-widest text-shadow">
+                  <div className="text-2xl sm:text-3xl font-mono font-black text-cyan-400 tracking-widest text-shadow">
                     {recentlyGenerated.key}
                   </div>
-                  <div className="text-xs text-slate-300 mt-1.5">
-                    Assigned: <strong className="text-slate-100">{recentlyGenerated.clientName}</strong> ({recentlyGenerated.organization || "Direct Client"}) · Valid until: {new Date(recentlyGenerated.expiresAt).toLocaleDateString()}
+                  <div className="text-xs mt-1.5" style={{ color: "var(--text-secondary)" }}>
+                    Assigned: <strong style={{ color: "var(--text-primary)" }}>{recentlyGenerated.clientName}</strong> ({recentlyGenerated.organization || "Direct Client"}) · Valid until: {new Date(recentlyGenerated.expiresAt).toLocaleDateString()}
                   </div>
                 </div>
 
@@ -982,7 +1107,8 @@ export default function LicensePortalDashboard() {
                       const text = `AEGIS IDPS ACTIVATION CREDENTIALS:\nClient: ${recentlyGenerated.clientName}\nLicense Key: ${recentlyGenerated.key}\nExpiry Date: ${new Date(recentlyGenerated.expiresAt).toLocaleDateString()}\n\nInstructions: Launch Aegis IDPS on your PC, paste this 16-character key into the unified login card, and click 'AUTHORIZE & ENTER CONSOLE'.`;
                       copyToClipboard(text, "summary");
                     }}
-                    className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                    className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl border text-xs font-semibold transition cursor-pointer"
+                    style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
                   >
                     {copiedSummary ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedSummary ? "Copied Message!" : "Copy Instructions"}</span>
@@ -994,14 +1120,14 @@ export default function LicensePortalDashboard() {
         </section>
 
         {/* ── Active Licenses Management Table (Glassmorphism) ───────────────── */}
-        <section className="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl border border-cyan-500/25">
+        <section className="glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-100 tracking-wide uppercase flex items-center space-x-2">
+              <h2 className="text-base sm:text-lg font-black tracking-wide uppercase flex items-center space-x-2" style={{ color: "var(--text-primary)" }}>
                 <span>DEPLOYED CLIENT NODES</span>
-                <span className="text-xs font-normal text-cyan-400 font-mono">({filteredLicenses.length} matching)</span>
+                <span className="text-xs font-normal text-cyan-500 font-mono">({filteredLicenses.length} matching)</span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
                 Live monitoring of issued licenses, bound hardware fingerprints, and instantaneous access control.
               </p>
             </div>
@@ -1015,11 +1141,15 @@ export default function LicensePortalDashboard() {
                   placeholder="Search client, key, HWID..."
                   value={searchQuery}
                   onChange={(e: any) => setSearchQuery(e.target.value)}
-                  className="bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none w-56 transition"
+                  style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                  className="border focus:border-cyan-400 rounded-xl pl-8 pr-3 py-1.5 text-xs placeholder-slate-500 outline-none w-56 transition"
                 />
               </div>
 
-              <div className="flex rounded-xl bg-slate-950/90 p-1 border border-slate-800 text-xs">
+              <div
+                className="flex rounded-xl p-1 border text-xs"
+                style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)" }}
+              >
                 {(["all", "active", "expiring", "revoked"] as const).map((filter) => (
                   <button
                     key={filter}
@@ -1038,20 +1168,26 @@ export default function LicensePortalDashboard() {
           </div>
 
           {/* Table Container */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-slate-950/70">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-900/90 text-slate-400 uppercase text-[11px] font-black tracking-wider border-b border-slate-800">
+          <div
+            className="overflow-x-auto rounded-2xl border"
+            style={{ backgroundColor: "var(--table-bg)", borderColor: "var(--panel-border)" }}
+          >
+            <table className="w-full text-left text-xs" style={{ color: "var(--text-primary)" }}>
+              <thead
+                className="uppercase text-[11px] font-black tracking-wider border-b"
+                style={{ backgroundColor: "var(--table-header)", borderColor: "var(--table-divide)" }}
+              >
                 <tr>
-                  <th className="py-3.5 px-4 text-cyan-300">Client &amp; Organization</th>
-                  <th className="py-3.5 px-4 text-cyan-300">License Key</th>
-                  <th className="py-3.5 px-4 text-cyan-300">Remaining</th>
-                  <th className="py-3.5 px-4 text-cyan-300">Expiry Date</th>
-                  <th className="py-3.5 px-4 text-cyan-300">Bound Workstation (HWID)</th>
-                  <th className="py-3.5 px-4 text-cyan-300">Node Status</th>
-                  <th className="py-3.5 px-4 text-right text-cyan-300">Actions</th>
+                  <th className="py-3.5 px-4 text-cyan-500">Client &amp; Organization</th>
+                  <th className="py-3.5 px-4 text-cyan-500">License Key</th>
+                  <th className="py-3.5 px-4 text-cyan-500">Remaining</th>
+                  <th className="py-3.5 px-4 text-cyan-500">Expiry Date</th>
+                  <th className="py-3.5 px-4 text-cyan-500">Bound Workstation (HWID)</th>
+                  <th className="py-3.5 px-4 text-cyan-500">Node Status</th>
+                  <th className="py-3.5 px-4 text-right text-cyan-500">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-850">
+              <tbody className="divide-y" style={{ borderColor: "var(--table-divide)" }}>
                 {loading ? (
                   <tr>
                     <td colSpan={7} className="text-center py-12 text-slate-500 font-mono">
@@ -1070,24 +1206,24 @@ export default function LicensePortalDashboard() {
                     const isExpired = new Date(lic.expiresAt).getTime() <= Date.now();
 
                     return (
-                      <tr key={lic.key} className="hover:bg-cyan-950/20 transition">
+                      <tr key={lic.key} className="hover:bg-cyan-500/10 transition">
                         {/* Client Name & Org */}
                         <td className="py-3.5 px-4">
-                          <div className="font-bold text-slate-100">{lic.clientName}</div>
-                          <div className="text-[11px] text-slate-400">{lic.organization}</div>
+                          <div className="font-bold" style={{ color: "var(--text-primary)" }}>{lic.clientName}</div>
+                          <div className="text-[11px]" style={{ color: "var(--text-secondary)" }}>{lic.organization}</div>
                           {lic.contactEmail && (
-                            <div className="text-[10px] text-slate-500 font-mono">{lic.contactEmail}</div>
+                            <div className="text-[10px] font-mono" style={{ color: "var(--text-tertiary)" }}>{lic.contactEmail}</div>
                           )}
                         </td>
 
                         {/* License Key */}
-                        <td className="py-3.5 px-4 font-mono font-bold text-cyan-300">
+                        <td className="py-3.5 px-4 font-mono font-bold text-cyan-500">
                           <div className="flex items-center space-x-1.5">
                             <span>{lic.key}</span>
                             <button
                               onClick={() => copyToClipboard(lic.key, "key")}
                               title="Copy Key"
-                              className="text-slate-500 hover:text-cyan-400 transition cursor-pointer"
+                              className="text-slate-400 hover:text-cyan-500 transition cursor-pointer"
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>
@@ -1116,21 +1252,21 @@ export default function LicensePortalDashboard() {
                         </td>
 
                         {/* Expiry Date */}
-                        <td className="py-3.5 px-4 text-slate-300 font-mono">
+                        <td className="py-3.5 px-4 font-mono" style={{ color: "var(--text-secondary)" }}>
                           {new Date(lic.expiresAt).toLocaleDateString()}
                         </td>
 
                         {/* Bound Machine */}
                         <td className="py-3.5 px-4">
                           {lic.hardwareId ? (
-                            <div className="flex items-center space-x-1.5 text-slate-200">
+                            <div className="flex items-center space-x-1.5">
                               <Laptop className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                              <span className="font-mono text-[11px] text-cyan-300" title={lic.hardwareId}>
+                              <span className="font-mono text-[11px] text-cyan-500" title={lic.hardwareId}>
                                 {lic.machineHostname || lic.hardwareId.substring(0, 14) + "..."}
                               </span>
                             </div>
                           ) : (
-                            <span className="text-slate-500 italic text-[11px]">
+                            <span className="italic text-[11px]" style={{ color: "var(--text-tertiary)" }}>
                               Waiting for node activation...
                             </span>
                           )}
@@ -1139,17 +1275,17 @@ export default function LicensePortalDashboard() {
                         {/* Status */}
                         <td className="py-3.5 px-4">
                           {!lic.isActive ? (
-                            <span className="inline-flex items-center space-x-1 text-red-400 font-bold">
+                            <span className="inline-flex items-center space-x-1 text-red-500 font-bold">
                               <XCircle className="w-3.5 h-3.5" />
                               <span>Revoked</span>
                             </span>
                           ) : isExpired ? (
-                            <span className="inline-flex items-center space-x-1 text-red-400 font-bold">
+                            <span className="inline-flex items-center space-x-1 text-red-500 font-bold">
                               <AlertTriangle className="w-3.5 h-3.5" />
                               <span>Expired</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center space-x-1 text-emerald-400 font-bold">
+                            <span className="inline-flex items-center space-x-1 text-emerald-500 font-bold">
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Active</span>
                             </span>
@@ -1182,7 +1318,8 @@ export default function LicensePortalDashboard() {
                             <button
                               onClick={() => handleAction(lic.key, "extend", 30)}
                               title="Extend subscription by +30 Days"
-                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition cursor-pointer"
+                              style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                              className="px-2.5 py-1 rounded-lg border text-[11px] font-bold transition cursor-pointer hover:border-cyan-400"
                             >
                               +30d
                             </button>
@@ -1192,7 +1329,8 @@ export default function LicensePortalDashboard() {
                               <button
                                 onClick={() => handleAction(lic.key, "reset_hwid")}
                                 title="Unlock machine binding so client can switch PC"
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
+                                style={{ backgroundColor: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--text-primary)" }}
+                                className="p-1.5 rounded-lg border transition cursor-pointer hover:border-cyan-400"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
                               </button>
@@ -1206,7 +1344,7 @@ export default function LicensePortalDashboard() {
                                 }
                               }}
                               title="Permanently Delete License"
-                              className="p-1.5 rounded-lg hover:bg-red-950/80 text-slate-500 hover:text-red-400 transition cursor-pointer"
+                              className="p-1.5 rounded-lg hover:bg-red-950/80 text-slate-400 hover:text-red-400 transition cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>

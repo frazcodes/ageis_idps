@@ -67,6 +67,9 @@ declare module "lucide-react" {
   export const Terminal: any;
   export const Radio: any;
   export const Globe: any;
+  export const Sun: any;
+  export const Moon: any;
+  export const Palette: any;
   export const LucideIcon: any;
   const icons: Record<string, any>;
   export default icons;
