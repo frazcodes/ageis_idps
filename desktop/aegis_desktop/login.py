@@ -1157,8 +1157,9 @@ class LoginWindow(QWidget):
             import threading
             def _speak_worker() -> None:
                 try:
-                    import win32com.client
-                    speaker = win32com.client.Dispatch("SAPI.SpVoice")
+                    import importlib
+                    win32_mod = importlib.import_module("win32com.client")
+                    speaker = getattr(win32_mod, "Dispatch")("SAPI.SpVoice")
                     speaker.Rate = 1
                     speaker.Speak(f"Welcome to Aegis, {username}")
                 except Exception:
