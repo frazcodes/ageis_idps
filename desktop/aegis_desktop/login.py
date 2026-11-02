@@ -644,40 +644,66 @@ class _LoginCard(QFrame):
         root.addWidget(divider)
         root.addSpacing(12)
 
-        # ── Hardware ID Pill (Monospace + One-Click Copy) ────────────────
+        # ── Hardware ID Bar (Crisp Monospace + High-Contrast Copy Button) ──
         hwid_frame = QFrame()
         hwid_frame.setStyleSheet(f"""
             QFrame {{
-                background-color: rgba(15, 23, 42, 0.70);
-                border: 1px solid {_BORDER};
-                border-radius: 8px;
+                background-color: rgba(15, 23, 42, 0.85);
+                border: 1px solid rgba(56, 189, 248, 0.35);
+                border-radius: 9px;
             }}
         """)
         hwid_layout = QHBoxLayout(hwid_frame)
-        hwid_layout.setContentsMargins(12, 6, 8, 6)
-        hwid_layout.setSpacing(8)
+        hwid_layout.setContentsMargins(12, 7, 8, 7)
+        hwid_layout.setSpacing(10)
+        hwid_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        hwid_prefix = QLabel("HWID:")
-        hwid_prefix.setStyleSheet(f"color: {_MUTED}; font-size: 10px; font-weight: 700; background: transparent;")
+        hwid_prefix = QLabel("HWID")
+        hwid_prefix.setStyleSheet(f"""
+            color: {_CYAN};
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            background: rgba(6, 182, 212, 0.12);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 4px;
+            padding: 2px 6px;
+        """)
+
         hwid_val = QLabel(self._client.hardware_id)
-        hwid_val.setStyleSheet(f"color: {_CYAN}; font-family: 'Consolas', monospace; font-size: 11px; font-weight: 600; background: transparent;")
+        hwid_val.setToolTip("Unique Endpoint Hardware Fingerprint for Node Licensing")
+        hwid_val.setStyleSheet(f"""
+            color: #E2E8F0;
+            font-family: 'Consolas', monospace;
+            font-size: 10.5px;
+            font-weight: 600;
+            background: transparent;
+        """)
 
-        self._copy_btn = QPushButton("Copy")
-        self._copy_btn.setFixedSize(54, 22)
+        self._copy_btn = QPushButton("📋 Copy")
+        self._copy_btn.setFixedSize(70, 26)
         self._copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._copy_btn.setToolTip("Copy HWID to clipboard")
         self._copy_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {_CARD2};
-                color: {_TEXT2};
-                border: 1px solid {_BORDER2};
-                border-radius: 4px;
-                font-size: 10px;
-                font-weight: 600;
+                background: rgba(6, 182, 212, 0.15);
+                color: #38BDF8;
+                border: 1px solid rgba(56, 189, 248, 0.45);
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: 700;
             }}
             QPushButton:hover {{
-                background-color: {_ACCENT};
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #06B6D4,
+                    stop:1 #3B82F6
+                );
                 color: #FFFFFF;
-                border-color: {_ACCENT3};
+                border: 1px solid #38BDF8;
+            }}
+            QPushButton:pressed {{
+                background: #0891B2;
             }}
         """)
         self._copy_btn.clicked.connect(self._copy_hwid)
@@ -929,7 +955,43 @@ class _LoginCard(QFrame):
         if clipboard:
             clipboard.setText(self._client.hardware_id)
             self._copy_btn.setText("✓ Copied")
-            QTimer.singleShot(1500, lambda: self._copy_btn.setText("Copy"))
+            self._copy_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: rgba(16, 185, 129, 0.25);
+                    color: #34D399;
+                    border: 1px solid #10B981;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: 800;
+                }}
+            """)
+
+            def _restore() -> None:
+                self._copy_btn.setText("📋 Copy")
+                self._copy_btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: rgba(6, 182, 212, 0.15);
+                        color: #38BDF8;
+                        border: 1px solid rgba(56, 189, 248, 0.45);
+                        border-radius: 6px;
+                        font-size: 11px;
+                        font-weight: 700;
+                    }}
+                    QPushButton:hover {{
+                        background: qlineargradient(
+                            x1:0, y1:0, x2:1, y2:0,
+                            stop:0 #06B6D4,
+                            stop:1 #3B82F6
+                        );
+                        color: #FFFFFF;
+                        border: 1px solid #38BDF8;
+                    }}
+                    QPushButton:pressed {{
+                        background: #0891B2;
+                    }}
+                """)
+
+            QTimer.singleShot(1800, _restore)
 
     def _switch_to_activation_mode(self) -> None:
         self._mode = "activate"
