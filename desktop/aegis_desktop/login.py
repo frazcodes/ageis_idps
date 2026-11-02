@@ -599,8 +599,9 @@ class _LoginCard(QFrame):
 
     def _build(self) -> None:
         # Clear existing layout if rebuilding
-        if self.layout() is not None:
-            QWidget().setLayout(self.layout())
+        old_layout = self.layout()
+        if old_layout is not None:
+            QWidget().setLayout(old_layout)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(36, 32, 36, 28)

@@ -222,7 +222,7 @@ export default function LicensePortalDashboard() {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
-  const filteredLicenses = licenses.filter((lic) => {
+  const filteredLicenses = licenses.filter((lic: License) => {
     const q = searchQuery.toLowerCase();
     const matchesSearch =
       lic.clientName.toLowerCase().includes(q) ||
@@ -296,7 +296,7 @@ export default function LicensePortalDashboard() {
                   required
                   placeholder="Enter administrator ID"
                   value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
+                  onChange={(e: any) => setLoginUsername(e.target.value)}
                   className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 outline-none transition"
                 />
               </div>
@@ -313,7 +313,7 @@ export default function LicensePortalDashboard() {
                   required
                   placeholder="••••••••••••"
                   value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
+                  onChange={(e: any) => setLoginPassword(e.target.value)}
                   className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 outline-none transition"
                 />
               </div>
@@ -505,7 +505,7 @@ export default function LicensePortalDashboard() {
                     required
                     placeholder="e.g. Ahmad Faraz"
                     value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
+                    onChange={(e: any) => setClientName(e.target.value)}
                     className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
                   />
                 </div>
@@ -522,7 +522,7 @@ export default function LicensePortalDashboard() {
                     type="text"
                     placeholder="e.g. Aegis Cyber Defense Lab"
                     value={organization}
-                    onChange={(e) => setOrganization(e.target.value)}
+                    onChange={(e: any) => setOrganization(e.target.value)}
                     className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
                   />
                 </div>
@@ -539,7 +539,7 @@ export default function LicensePortalDashboard() {
                     type="text"
                     placeholder="e.g. operator@domain.com"
                     value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
+                    onChange={(e: any) => setContactEmail(e.target.value)}
                     className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
                   />
                 </div>
@@ -554,7 +554,7 @@ export default function LicensePortalDashboard() {
                   <Calendar className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                   <select
                     value={plan}
-                    onChange={(e) => setPlan(e.target.value as LicensePlan)}
+                    onChange={(e: any) => setPlan(e.target.value as LicensePlan)}
                     className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 outline-none transition cursor-pointer"
                   >
                     <option value="7_days">7 Days (Short Evaluation Trial)</option>
@@ -575,7 +575,7 @@ export default function LicensePortalDashboard() {
                   <Laptop className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
                   <select
                     value={maxDevices}
-                    onChange={(e) => setMaxDevices(parseInt(e.target.value, 10))}
+                    onChange={(e: any) => setMaxDevices(parseInt(e.target.value, 10))}
                     className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 outline-none transition cursor-pointer"
                   >
                     <option value={1}>1 Machine (Single Workstation Lock)</option>
@@ -596,7 +596,7 @@ export default function LicensePortalDashboard() {
                     type="text"
                     placeholder="e.g. FYP External Evaluator / Node #01"
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
+                    onChange={(e: any) => setNotes(e.target.value)}
                     className="w-full bg-slate-950/70 border border-slate-700/70 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition"
                   />
                 </div>
@@ -685,7 +685,7 @@ export default function LicensePortalDashboard() {
                   type="text"
                   placeholder="Search client, key, HWID..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e: any) => setSearchQuery(e.target.value)}
                   className="bg-slate-950/80 border border-slate-700/80 focus:border-cyan-400 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none w-56 transition"
                 />
               </div>
@@ -736,7 +736,7 @@ export default function LicensePortalDashboard() {
                     </td>
                   </tr>
                 ) : (
-                  filteredLicenses.map((lic) => {
+                  filteredLicenses.map((lic: License) => {
                     const daysLeft = calculateDays(lic.expiresAt);
                     const isExpired = new Date(lic.expiresAt).getTime() <= Date.now();
 
