@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, FormEvent } from "react";
+import React, { useState, useEffect, useCallback, useRef, FormEvent } from "react";
 import {
   Shield,
   Key,
@@ -23,6 +23,8 @@ import {
   FileText,
   RotateCcw,
   Lock,
+  Eye,
+  EyeOff,
   LogOut,
   Sparkles,
   ExternalLink,
@@ -41,6 +43,144 @@ const DEFAULT_ADMIN_USER = "admin";
 const DEFAULT_ADMIN_PASS = "aegis@2026";
 const AUTH_STORAGE_KEY = "aegis_cloud_admin_auth";
 
+// ── Interactive Animated Cyber Canvas Background Component ─────────────────
+function CyberBackgroundCanvas() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const handleResize = () => {
+      if (!canvas) return;
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+    window.addEventListener("resize", handleResize);
+
+    // Nodes constellation
+    const nodeCount = Math.min(60, Math.floor((width * height) / 20000));
+    const nodes: Array<{
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: number;
+      color: string;
+    }> = [];
+
+    const colors = ["#00F0FF", "#38BDF8", "#10B981", "#818CF8", "#06B6D4"];
+    for (let i = 0; i < nodeCount; i++) {
+      nodes.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: (Math.random() - 0.5) * 0.6,
+        radius: Math.random() * 2 + 1,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+
+    // Floating cyber data tokens
+    const tokens = [
+      "0xAE71_OK",
+      "AEGIS_SOC_V2",
+      "RSA256_ACTIVE",
+      "FIREBASE_SYNC",
+      "NODE_HWID_LOCK",
+      "TLS_1.3_ENCRYPTED",
+      "SHA256_FINGERPRINT",
+      "LEVEL_5_CLEARANCE",
+      "SEC_OPS_CLUSTER",
+    ];
+    const floatingTokens: Array<{
+      x: number;
+      y: number;
+      text: string;
+      speed: number;
+      opacity: number;
+    }> = [];
+    for (let i = 0; i < 12; i++) {
+      floatingTokens.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        text: tokens[Math.floor(Math.random() * tokens.length)],
+        speed: Math.random() * 0.5 + 0.25,
+        opacity: Math.random() * 0.35 + 0.1,
+      });
+    }
+
+    const draw = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw floating cyber data stream tokens
+      ctx.font = "9px 'Consolas', monospace";
+      floatingTokens.forEach((token) => {
+        ctx.fillStyle = `rgba(0, 240, 255, ${token.opacity})`;
+        ctx.fillText(token.text, token.x, token.y);
+        token.y -= token.speed;
+        if (token.y < -15) {
+          token.y = height + 15;
+          token.x = Math.random() * width;
+        }
+      });
+
+      // Update and draw interconnected cyber nodes
+      nodes.forEach((node, i) => {
+        node.x += node.vx;
+        node.y += node.vy;
+
+        if (node.x < 0 || node.x > width) node.vx *= -1;
+        if (node.y < 0 || node.y > height) node.vy *= -1;
+
+        // Draw node dot
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fillStyle = node.color;
+        ctx.shadowColor = node.color;
+        ctx.shadowBlur = 6;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Draw connections between nearby nodes
+        for (let j = i + 1; j < nodes.length; j++) {
+          const other = nodes[j];
+          const dx = node.x - other.x;
+          const dy = node.y - other.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 130) {
+            ctx.beginPath();
+            ctx.moveTo(node.x, node.y);
+            ctx.lineTo(other.x, other.y);
+            const alpha = (1 - dist / 130) * 0.22;
+            ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
+          }
+        }
+      });
+
+      animationFrameId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-0" />;
+}
+
 export default function LicensePortalDashboard() {
   // ── Authentication State ──────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -50,6 +190,7 @@ export default function LicensePortalDashboard() {
   const [authStepText, setAuthStepText] = useState<string>("");
   const [loginUsername, setLoginUsername] = useState<string>("");
   const [loginPassword, setLoginPassword] = useState<string>("");
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>("");
 
   // ── Live UTC Clock ────────────────────────────────────────────────────────
@@ -133,23 +274,23 @@ export default function LicensePortalDashboard() {
       (trimmedPass === DEFAULT_ADMIN_PASS || trimmedPass === "aegis2026")
     ) {
       setIsAuthenticating(true);
-      setAuthProgress(15);
-      setAuthStepText("VERIFYING MASTER CRYPTOGRAPHIC KEY...");
+      setAuthProgress(18);
+      setAuthStepText("[0x01] RSA-256 JWT HANDSHAKE INITIALIZING...");
 
       setTimeout(() => {
-        setAuthProgress(45);
-        setAuthStepText("ESTABLISHING ENCRYPTED LINK TO FIREBASE CLOUD...");
+        setAuthProgress(48);
+        setAuthStepText("[0x02] ESTABLISHING SECURE TLS LINK TO FIREBASE CLUSTER...");
       }, 400);
 
       setTimeout(() => {
-        setAuthProgress(80);
-        setAuthStepText("DECRYPTING CLIENT HARDWARE VAULT...");
+        setAuthProgress(82);
+        setAuthStepText("[0x03] DECRYPTING CLIENT HARDWARE ID VAULT...");
       }, 850);
 
       setTimeout(() => {
         setAuthProgress(100);
-        setAuthStepText("ACCESS GRANTED. INITIALIZING SOC COCKPIT...");
-      }, 1250);
+        setAuthStepText("[0x04] ACCESS GRANTED. LAUNCHING SOC COCKPIT...");
+      }, 1300);
 
       setTimeout(() => {
         setIsAuthenticating(false);
@@ -160,7 +301,7 @@ export default function LicensePortalDashboard() {
           // ignore
         }
         showToast("Welcome Master Operator. SOC Cockpit Initialized.", "success");
-      }, 1600);
+      }, 1700);
     } else {
       setLoginError("ACCESS DENIED: Invalid Master Administrator credentials.");
     }
@@ -311,7 +452,7 @@ export default function LicensePortalDashboard() {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // VIEW 1: Master Admin Authentication Screen (Cyber Glassmorphism)
+  // VIEW 1: Master Admin Authentication Screen (Interactive Cyber Canvas + HUD)
   // ──────────────────────────────────────────────────────────────────────────
   if (authChecking) {
     return (
@@ -323,10 +464,13 @@ export default function LicensePortalDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#030712] cyber-grid text-slate-100 flex items-center justify-center p-4 relative overflow-hidden selection:bg-cyan-500 selection:text-black">
-        {/* Animated Cyber Scanning Line */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="w-full h-1 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent animate-scanline opacity-75"></div>
+      <div className="min-h-screen bg-[#030712] text-slate-100 flex items-center justify-center p-4 relative overflow-hidden selection:bg-cyan-500 selection:text-black">
+        {/* Hardware-accelerated Interactive Cyber Particles Canvas */}
+        <CyberBackgroundCanvas />
+
+        {/* Animated Cyber Scanning Laser Line */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+          <div className="w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent animate-scanline opacity-80"></div>
         </div>
 
         {/* Ambient Glowing Glass Orbs */}
@@ -335,19 +479,25 @@ export default function LicensePortalDashboard() {
         <div className="absolute top-1/2 left-1/2 w-80 h-80 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
 
         {/* Master Admin Glassmorphism Card */}
-        <div className="w-full max-w-md relative z-10 glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl shadow-cyan-950/60 border border-cyan-500/30">
-          {/* Cyber HUD Corner Accents */}
-          <div className="absolute top-3 left-3 w-3 h-3 border-t-2 border-l-2 border-cyan-400"></div>
-          <div className="absolute top-3 right-3 w-3 h-3 border-t-2 border-r-2 border-cyan-400"></div>
-          <div className="absolute bottom-3 left-3 w-3 h-3 border-b-2 border-l-2 border-cyan-400"></div>
-          <div className="absolute bottom-3 right-3 w-3 h-3 border-b-2 border-r-2 border-cyan-400"></div>
+        <div className="w-full max-w-md relative z-10 glass-panel rounded-3xl p-8 sm:p-10 shadow-2xl shadow-cyan-950/80 border border-cyan-500/40 backdrop-blur-3xl">
+          {/* Cyber HUD Corner Brackets */}
+          <div className="absolute top-3 left-3 w-3.5 h-3.5 border-t-2 border-l-2 border-cyan-400"></div>
+          <div className="absolute top-3 right-3 w-3.5 h-3.5 border-t-2 border-r-2 border-cyan-400"></div>
+          <div className="absolute bottom-3 left-3 w-3.5 h-3.5 border-b-2 border-l-2 border-cyan-400"></div>
+          <div className="absolute bottom-3 right-3 w-3.5 h-3.5 border-b-2 border-r-2 border-cyan-400"></div>
 
           {/* If Currently Running Cyber Authentication Sequence */}
           {isAuthenticating ? (
-            <div className="py-8 flex flex-col items-center text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
-              <div className="relative">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-emerald-500/20 to-blue-500/30 border-2 border-cyan-400/80 flex items-center justify-center shadow-2xl shadow-cyan-500/40 animate-pulse">
-                  <Shield className="w-10 h-10 text-cyan-300" />
+            <div className="py-6 flex flex-col items-center text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+              {/* Rotating Triple Concentric HUD Reactor */}
+              <div className="relative w-28 h-28 flex items-center justify-center">
+                {/* Outer dashed spinning ring */}
+                <div className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-400 animate-[spin_4s_linear_infinite] opacity-80"></div>
+                {/* Middle counter-spinning ring */}
+                <div className="absolute inset-2 rounded-full border border-emerald-400/70 border-t-transparent animate-[spin_3s_linear_infinite_reverse]"></div>
+                {/* Inner glowing pulse core */}
+                <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/30 via-emerald-500/30 to-blue-500/40 border border-cyan-300 flex items-center justify-center shadow-[0_0_30px_rgba(6,182,212,0.6)] animate-pulse">
+                  <Shield className="w-8 h-8 text-cyan-200" />
                 </div>
               </div>
 
@@ -360,33 +510,43 @@ export default function LicensePortalDashboard() {
                 </p>
               </div>
 
-              {/* Progress Bar */}
+              {/* Glowing Cyber Progress Bar */}
               <div className="w-full space-y-2">
-                <div className="w-full bg-slate-950/80 rounded-full h-2.5 overflow-hidden border border-cyan-500/40 p-0.5">
+                <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-cyan-500/50 p-0.5">
                   <div
-                    className="bg-gradient-to-r from-cyan-400 via-emerald-400 to-cyan-300 h-full rounded-full transition-all duration-300 shadow-[0_0_12px_rgba(56,189,248,0.8)]"
+                    className="bg-gradient-to-r from-cyan-400 via-emerald-400 to-sky-300 h-full rounded-full transition-all duration-300 shadow-[0_0_15px_rgba(56,189,248,0.9)]"
                     style={{ width: `${authProgress}%` }}
                   ></div>
                 </div>
-                <div className="flex justify-between text-[10px] font-mono text-slate-400">
-                  <span className="text-cyan-400">{authStepText}</span>
-                  <span className="font-bold text-slate-300">{authProgress}%</span>
+                <div className="flex justify-between text-[11px] font-mono text-slate-300">
+                  <span className="text-cyan-400 font-bold">{authStepText}</span>
+                  <span className="font-extrabold text-emerald-400">{authProgress}%</span>
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-400 text-left w-full space-y-1">
-                <div className="text-emerald-400">✓ RSA-256 JWT Signed: OK</div>
-                <div className="text-cyan-400">✓ Handshake: aegis-license-system</div>
-                <div className="text-slate-500">&gt; Loading Cockpit Dashboards...</div>
+              {/* Simulated Cyber Terminal Output */}
+              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-cyan-900/60 text-[10px] font-mono text-slate-400 text-left w-full space-y-1.5 shadow-inner">
+                <div className="text-emerald-400 flex items-center space-x-1.5">
+                  <span className="text-cyan-400">&gt;</span>
+                  <span>RSA-256 JWT Signed: OK (aegis-license-system)</span>
+                </div>
+                <div className="text-cyan-300 flex items-center space-x-1.5">
+                  <span className="text-cyan-400">&gt;</span>
+                  <span>Hardware Fingerprint Signature: VERIFIED</span>
+                </div>
+                <div className="text-slate-400 flex items-center space-x-1.5 animate-pulse">
+                  <span className="text-cyan-400">&gt;</span>
+                  <span>Launching SOC Command Cockpit...</span>
+                </div>
               </div>
             </div>
           ) : (
             <>
               {/* Top Badge & Glow Icon */}
-              <div className="flex flex-col items-center text-center mb-8">
+              <div className="flex flex-col items-center text-center mb-7">
                 <div className="relative mb-4">
-                  <div className="absolute inset-0 bg-cyan-400/30 rounded-2xl blur-xl animate-pulse"></div>
-                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/30 to-blue-900/40 border border-cyan-400/60 flex items-center justify-center shadow-xl shadow-cyan-500/20">
+                  <div className="absolute inset-0 bg-cyan-400/40 rounded-2xl blur-xl animate-pulse"></div>
+                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/30 to-blue-900/40 border border-cyan-400/70 flex items-center justify-center shadow-xl shadow-cyan-500/30">
                     <Shield className="w-8 h-8 text-cyan-300" />
                   </div>
                 </div>
@@ -395,14 +555,14 @@ export default function LicensePortalDashboard() {
                   <h1 className="text-2xl font-black tracking-wider text-slate-100">
                     AEGIS IDPS
                   </h1>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-400 border border-cyan-700/60">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-400 border border-cyan-700/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
                     SOC v2.4
                   </span>
                 </div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-cyan-400 mt-1">
                   Cloud License Operations Portal
                 </p>
-                <div className="mt-3 inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-slate-950/80 border border-slate-800 text-[11px] text-slate-300 font-mono">
+                <div className="mt-3 inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-slate-950/90 border border-slate-800 text-[11px] text-slate-300 font-mono">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                   <span>RESTRICTED MASTER CONSOLE</span>
                 </div>
@@ -427,6 +587,7 @@ export default function LicensePortalDashboard() {
                   </div>
                 </div>
 
+                {/* Password field with EYE icon toggle */}
                 <div>
                   <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
                     Master Cryptographic Passcode
@@ -434,13 +595,21 @@ export default function LicensePortalDashboard() {
                   <div className="relative">
                     <Lock className="w-4 h-4 text-cyan-400 absolute left-3.5 top-3" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       required
                       placeholder="••••••••••••"
                       value={loginPassword}
                       onChange={(e: any) => setLoginPassword(e.target.value)}
-                      className="w-full bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition font-mono"
+                      className="w-full bg-slate-950/90 border border-slate-700/80 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30 rounded-xl pl-10 pr-11 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition font-mono"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-2.5 text-slate-400 hover:text-cyan-300 transition cursor-pointer"
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -484,7 +653,10 @@ export default function LicensePortalDashboard() {
   // VIEW 2: Ultra-Premium Cyber SOC Dashboard
   // ──────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#030712] cyber-grid text-slate-100 p-4 sm:p-6 md:p-8 relative overflow-hidden selection:bg-cyan-500 selection:text-black">
+    <div className="min-h-screen bg-[#030712] text-slate-100 p-4 sm:p-6 md:p-8 relative overflow-hidden selection:bg-cyan-500 selection:text-black">
+      {/* Background Interactive Cyber Particles Canvas */}
+      <CyberBackgroundCanvas />
+
       {/* Floating Interactive Toast Notification */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-50 animate-in slide-in-from-top-4 fade-in duration-300">

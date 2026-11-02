@@ -55,6 +55,8 @@ declare module "lucide-react" {
   export const FileText: any;
   export const RotateCcw: any;
   export const Lock: any;
+  export const Eye: any;
+  export const EyeOff: any;
   export const LogOut: any;
   export const Sparkles: any;
   export const ExternalLink: any;
