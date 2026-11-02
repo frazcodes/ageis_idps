@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, FormEvent } from "react";
 import {
   Shield,
   Key,
@@ -89,7 +89,7 @@ export default function LicensePortalDashboard() {
     }
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = (e: FormEvent) => {
     e.preventDefault();
     setLoginError("");
     setLoginLoading(true);
@@ -153,7 +153,7 @@ export default function LicensePortalDashboard() {
     fetchLicenses();
   };
 
-  const handleCreateLicense = async (e: React.FormEvent) => {
+  const handleCreateLicense = async (e: FormEvent) => {
     e.preventDefault();
     if (!clientName.trim()) return;
 

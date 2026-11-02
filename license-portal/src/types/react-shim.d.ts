@@ -7,6 +7,13 @@ declare namespace JSX {
   }
 }
 
+declare namespace React {
+  type ReactNode = any;
+  type ReactElement = any;
+  type FormEvent<T = any> = { preventDefault(): void; [key: string]: any };
+  type ChangeEvent<T = any> = { target: { value: any }; [key: string]: any };
+}
+
 declare module "react" {
   export type ReactNode = any;
   export type ReactElement = any;
